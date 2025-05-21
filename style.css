@@ -53,6 +53,38 @@ h2, h3 {
     margin-top: 15px;
 }
 
+.tile-grid-input {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr); /* Or auto-fill for responsiveness */
+    gap: 5px;
+    margin-bottom: 10px;
+    padding: 5px;
+    border: 1px solid #b0b0b0;
+}
+
+.tile-grid-input .tile-selectable {
+    /* Similar to .tile-tracker-item or .tile in hand, but for selection */
+    padding: 5px;
+    border: 1px solid #ccc;
+    background-color: #fff;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60px; /* Adjust */
+}
+
+.tile-grid-input .tile-selectable img {
+    width: 30px; /* Adjust */
+    height: auto;
+}
+
+.tile-grid-input .tile-selectable.selected-for-draw {
+    border: 2px solid #007bff; /* Highlight selected tile */
+    box-shadow: 0 0 5px #007bff;
+}
+
 /* Placeholder for individual tile tracker item */
 .tile-tracker-item {
     border: 1px solid #ddd;

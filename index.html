@@ -16,16 +16,27 @@
         <main class="content-area">
             <!-- "My Turn" Section -->
             <div id="myTurnSection" class="tab-content active-content">
+
+                <div class="player-wind-selection">
+                    <h3>My Seat Wind:</h3>
+                    <label><input type="radio" name="playerWind" value="ew" checked> East</label>
+                    <label><input type="radio" name="playerWind" value="sw"> South</label>
+                    <label><input type="radio" name="playerWind" value="ww"> West</label>
+                    <label><input type="radio" name="playerWind" value="nw"> North</label>
+                </div>
+
                 <h2>My Turn</h2>
 
                 <div class="drawn-tile-input">
-                    <label for="drawnTileSelector">Tile I Drew:</label>
-                    <!-- We'll populate this selector with tiles later -->
-                    <select id="drawnTileSelector" name="drawnTile">
-                        <option value="">--Select Tile--</option>
-                        <!-- Example: <option value="1m">1 Man</option> -->
-                    </select>
+                    <!-- <label for="drawnTileSelector">Tile I Drew:</label> -->
+                    <!-- <select id="drawnTileSelector" name="drawnTile">...</select> --> <!-- REMOVE/HIDE -->
+                    
+                    <h3>Select Tile Drawn:</h3>
+                    <div id="drawTileGridDisplay" class="tile-grid-input">
+                        <!-- Clickable tiles for drawing will be populated here by JS -->
+                    </div>
                     <button id="confirmDrawBtn">Confirm Draw</button>
+                    <span id="selectedTileForDraw" style="margin-left: 10px; font-weight: bold;"></span> <!-- To show what's selected -->
                 </div>
 
                 <div class="my-hand">

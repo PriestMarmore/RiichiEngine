@@ -32,10 +32,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const confirmDrawBtn = document.getElementById('confirmDrawBtn'); // ** NEWLY REFERENCED **
     const discardRecommendationEl = document.getElementById('discardRecommendation'); // ** NEWLY REFERENCED **
 
+    const playerWindRadios = document.querySelectorAll('input[name="playerWind"]');
+
+    const drawTileGridDisplay = document.getElementById('drawTileGridDisplay');
+    const selectedTileForDrawDisplay = document.getElementById('selectedTileForDraw');
+
     // --- State Variables ---
     const discardedTileCounts = {}; // Tracks discards by OTHERS {tileId: count}
     let myCurrentHand = [];         // Array of tile IDs in my hand, e.g., ['1m', '1m', '2p'] ** NEW **
     let myOwnDiscards = {};         // Counts of tiles I have discarded {tileId: count} ** NEW **
+    let playerSeatWind = 'ew'; // Default to East, matches the 'checked' radio button
+    const roundWind = 'ew';    // Hardcoded as East for now, as per your statement
+    let tileSelectedForDrawing = null;
+
 
 
     // --- 2. Tab Switching Logic --- (No changes here)
@@ -159,23 +168,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 5. My Hand Logic --- ** NEW SECTION / SIGNIFICANTLY EXPANDED **
     function addTileToMyHand(tileId) {
-        // A standard hand is 13 tiles. After drawing, it becomes 14 before discarding.
+        console.log("Inside addTileToMyHand with tileId:", tileId); // DEBUG LINE
+
         if (myCurrentHand.length >= 14) {
             alert("Hand is already 14 tiles. You must discard before drawing again.");
+            console.log("addTileToMyHand: Hand full (>=14). Length:", myCurrentHand.length); // DEBUG
             return false;
         }
-        // Check if we have 4 of this tile already in hand (shouldn't happen with normal play)
-        const countOfThisTileInHand = myCurrentHand.filter(t => t === tileId).length;
-        if (countOfThisTileInHand >= 4) {
-            alert(`You cannot have more than 4 of the tile ${tileId} in your hand (unless it's part of a Kan you haven't declared). This tool doesn't support undeclared Kans yet.`);
-            return false;
-        }
+        // ... (any other checks like count of this tile in hand) ...
 
         myCurrentHand.push(tileId);
-        sortHand(myCurrentHand); // Keep hand sorted
+        console.log("myCurrentHand after push:", myCurrentHand); // DEBUG LINE
+        sortMahjongHand(myCurrentHand);
         updateMyHandDisplay();
-        updateAllInGameCounts(); // Recalculate available tiles
-        getDiscardRecommendation(); // Get new recommendation
+        updateAllInGameCounts();
+        getDiscardRecommendation();
         return true;
     }
 
@@ -222,33 +229,63 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // Helper to sort hand - mahjong sort order can be complex, simple alphanumeric for now
-    function sortHand(hand) {
-        // Basic sort - can be improved for proper mahjong suit order
-        hand.sort();
+    function getTileSortValue(tileId) {
+        const suitOrder = { 'm': 1, 'p': 2, 's': 3, 'w': 4, 'd': 5 }; // w for winds, d for dragons
+        const honorOrder = { 'ew': 1, 'sw': 2, 'ww': 3, 'nw': 4, 'wd': 5, 'gd': 6, 'rd': 7 }; // For within honors
+
+        const suit = tileId.slice(-1); // 'm', 'p', 's', or last char of honor ID
+        const value = tileId.slice(0, -1); // Number for m,p,s or first char(s) of honor
+
+        if (['m', 'p', 's'].includes(suit)) {
+            return suitOrder[suit] * 100 + parseInt(value);
+        } else {
+            let baseSuitOrder;
+            if (['ew', 'sw', 'ww', 'nw'].includes(tileId)) {
+                baseSuitOrder = suitOrder['w']; // Winds group
+            } else { // Dragons
+                baseSuitOrder = suitOrder['d']; // Dragons group
+            }
+            return baseSuitOrder * 100 + honorOrder[tileId];
+        }
+    }
+
+    function sortMahjongHand(handArray) {
+        handArray.sort((a, b) => getTileSortValue(a) - getTileSortValue(b));
     }
 
     // --- 6. "Confirm Draw" Button Logic --- ** NEW SECTION **
     if (confirmDrawBtn) {
         confirmDrawBtn.addEventListener('click', () => {
-            const selectedTileId = drawnTileSelector.value;
+            const selectedTileId = tileSelectedForDrawing; // This is the key variable
+            console.log("Confirm Draw clicked. Tile to add:", selectedTileId); // DEBUG LINE
+
             if (selectedTileId) {
+                // Check if addTileToMyHand is even being called
+                console.log("Attempting to add to hand:", selectedTileId); // DEBUG LINE
+                
+                // Your existing logic for hand size checks:
                 if (myCurrentHand.length < 13) {
-                    alert("Please build your initial 13-tile hand first, or ensure you've discarded to 13 tiles.");
-                    // Or, allow adding up to 13 initially
-                    addTileToMyHand(selectedTileId);
-                    drawnTileSelector.value = ""; // Reset selector
-                } else if (myCurrentHand.length === 13) { // Correct state to draw a tile
-                    addTileToMyHand(selectedTileId);
-                    drawnTileSelector.value = ""; // Reset selector
-                } else { // Hand is already 14, should discard
+                    // ...
+                    addTileToMyHand(selectedTileId); // Call to add
+                    // ...
+                } else if (myCurrentHand.length === 13) {
+                    addTileToMyHand(selectedTileId); // Call to add
+                } else {
                     alert("You already have 14 tiles. Please discard one by clicking on it in your hand.");
                 }
+
+                // Reset selection after attempting to add
+                tileSelectedForDrawing = null;
+                const currentlySelectedVisual = drawTileGridDisplay.querySelector('.selected-for-draw');
+                if (currentlySelectedVisual) {
+                    currentlySelectedVisual.classList.remove('selected-for-draw');
+                }
+                selectedTileForDrawDisplay.textContent = "";
             } else {
-                alert("Please select a tile you drew from the dropdown.");
+                alert("Please select a tile you drew from the grid.");
+                console.log("No tile was selected for drawing."); // DEBUG LINE
             }
         });
-    } else {
-        console.error("Confirm Draw Button not found!");
     }
 
 
@@ -295,53 +332,411 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 9. Discard Recommendation Logic --- ** NEW SECTION (Basic Placeholder) **
     function getDiscardRecommendation() {
+        discardRecommendationEl.textContent = "--"; // Clear previous recommendation
+
         if (myCurrentHand.length !== 14) {
-            discardRecommendationEl.textContent = "--"; // No recommendation unless hand is 14 tiles
+            // Only provide recommendations for a 14-tile hand (after drawing, before discarding)
+            // You could also show shanten for a 13-tile hand if desired, but discard rec is for 14.
+            if (myCurrentHand.length === 13) {
+                const currentShanten = calculateOverallShanten(myCurrentHand);
+                discardRecommendationEl.textContent = `Current Shanten (13 tiles): ${currentShanten}. Draw a tile.`;
+            } else {
+                discardRecommendationEl.textContent = "Hand must have 14 tiles for discard recommendation.";
+            }
             return;
         }
 
-        // Very, very basic recommendation: discard the first isolated honor/terminal, then first tile.
-        // This is a TERRIBLE strategy, just a placeholder.
-        let recommendation = null;
+        let bestDiscardCandidate = null; // The tile ID of the best tile to discard
+        let shantenAfterBestDiscard = Infinity; // The shanten of the hand *after* discarding the best candidate
+        let ukeireForBestDiscard = 0; // Placeholder for ukeire (acceptance) count
 
-        // Prioritize isolated non-valuable honors
-        const honors = ['ew', 'sw', 'ww', 'nw', 'wd', 'gd', 'rd'];
-        for (const honorId of honors) {
-            if (myCurrentHand.includes(honorId) && myCurrentHand.filter(t => t === honorId).length === 1) {
-                // Check if it's a valuable honor (seat/round wind, dragon) - for now, treat all as simple discards
-                recommendation = honorId;
-                break;
+        // Create a unique list of tiles to try discarding to avoid redundant calculations
+        // E.g., if hand is 1m 1m 2p ..., only try discarding '1m' once.
+        const uniqueTilesInHand = [...new Set(myCurrentHand)];
+
+        for (const tileToDiscard of uniqueTilesInHand) {
+            const tempHand = [...myCurrentHand];
+            const indexToRemove = tempHand.indexOf(tileToDiscard); // Find first instance to remove
+            if (indexToRemove > -1) {
+                tempHand.splice(indexToRemove, 1); // Create a temporary 13-tile hand
+            } else {
+                continue; // Should not happen if uniqueTilesInHand comes from myCurrentHand
             }
-        }
 
-        // Then isolated terminals (1s or 9s)
-        if (!recommendation) {
-            const terminals = ['1m', '9m', '1p', '9p', '1s', '9s'];
-            for (const terminalId of terminals) {
-                if (myCurrentHand.includes(terminalId) && myCurrentHand.filter(t => t === terminalId).length === 1) {
-                    recommendation = terminalId;
-                    break;
-                }
+            const currentShantenOf13TileHand = calculateOverallShanten(tempHand);
+
+            // TODO: Future Step - Calculate Ukeire for this 13-tile hand
+            // let currentUkeire = calculateUkeire(tempHand, /* pass 'in game' counts */);
+
+            if (currentShantenOf13TileHand < shantenAfterBestDiscard) {
+                shantenAfterBestDiscard = currentShantenOf13TileHand;
+                bestDiscardCandidate = tileToDiscard;
+                // ukeireForBestDiscard = currentUkeire; // Store ukeire
+            } else if (currentShantenOf13TileHand === shantenAfterBestDiscard) {
+                // TODO: Future Step - If shanten is the same, use ukeire as a tie-breaker
+                // if (currentUkeire > ukeireForBestDiscard) {
+                //     bestDiscardCandidate = tileToDiscard;
+                //     ukeireForBestDiscard = currentUkeire;
+                // }
+                // For now, if shanten is same, we can just keep the first one found or apply simpler tie-break
+                // (e.g. prefer discarding honors over simples if shanten is equal - more complex logic)
             }
         }
         
-        // If no obvious isolated honor/terminal, recommend the first tile (very naive)
-        if (!recommendation && myCurrentHand.length > 0) {
-            recommendation = myCurrentHand[0];
+        // The shanten of the 14-tile hand is effectively the shanten of the best 13-tile hand it can form.
+        const effectiveShantenOf14TileHand = shantenAfterBestDiscard;
+
+        if (bestDiscardCandidate) {
+            const tileObj = TILE_TYPES.find(t => t.id === bestDiscardCandidate);
+            let recommendationText = `Shanten: ${effectiveShantenOf14TileHand}. `;
+            recommendationText += `Consider discarding: ${tileObj ? tileObj.name : bestDiscardCandidate} (${bestDiscardCandidate})`;
+            // if (ukeireForBestDiscard > 0) { // When ukeire is implemented
+            //     recommendationText += ` (Ukeire: ${ukeireForBestDiscard})`;
+            // }
+            discardRecommendationEl.textContent = recommendationText;
+        } else if (myCurrentHand.length > 0) {
+            // This case should ideally not be reached if myCurrentHand has 14 tiles,
+            // as there will always be at least one candidate.
+            // It might be reached if shanten calculations return Infinity for all options.
+            if (effectiveShantenOf14TileHand === -1) {
+                discardRecommendationEl.textContent = `TSUMO! Hand complete. Shanten: -1.`;
+                // The "bestDiscardCandidate" logic should still pick the tile that was just drawn if it completes the hand.
+                // E.g. if 13 tiles are tenpai, and 14th is winning tile, discard the 14th tile for display.
+                // This part needs careful thought for -1 shanten states.
+                // If shanten is -1, it means the 13-tile hand (after optimal discard) is complete.
+                // The discarded tile is the one that *wasn't* part of the winning 13.
+            } else {
+                discardRecommendationEl.textContent = `Shanten: ${effectiveShantenOf14TileHand}. Could not determine a unique best discard. (Defaulting or error).`;
+            }
+        } else {
+            discardRecommendationEl.textContent = "Hand empty."; // Should not happen if length check at start passes
+        }
+    }
+
+
+    // --- 10. Wind ---
+    function updatePlayerSeatWind() {
+        const selectedRadio = document.querySelector('input[name="playerWind"]:checked');
+        if (selectedRadio) {
+            playerSeatWind = selectedRadio.value;
+            console.log("Player seat wind updated to:", playerSeatWind);
+            // If a hand exists, we might want to re-evaluate recommendations
+            if (myCurrentHand.length === 14) {
+                getDiscardRecommendation();
+            }
+        }
+    }
+
+    playerWindRadios.forEach(radio => {
+        radio.addEventListener('change', updatePlayerSeatWind);
+    });
+
+    // --- 11. Draw Tiles ---
+    function initializeDrawTileGrid() {
+        drawTileGridDisplay.innerHTML = '';
+        TILE_TYPES.forEach(tile => {
+            const tileDiv = document.createElement('div');
+            tileDiv.classList.add('tile-selectable');
+            tileDiv.dataset.tileId = tile.id;
+
+            const tileImg = document.createElement('img');
+            tileImg.src = `tiles/${tile.id}.png`;
+            tileImg.alt = tile.name;
+            tileDiv.appendChild(tileImg);
+            
+            // Maybe add tile name text below image if small
+            // const tileNameText = document.createElement('span');
+            // tileNameText.textContent = tile.display; // or tile.name for full name
+            // tileNameText.style.fontSize = "0.7em";
+            // tileDiv.appendChild(tileNameText);
+
+
+            tileDiv.addEventListener('click', () => {
+                // Remove 'selected' class from previously selected tile
+                const previouslySelected = drawTileGridDisplay.querySelector('.selected-for-draw');
+                if (previouslySelected) {
+                    previouslySelected.classList.remove('selected-for-draw');
+                }
+
+                // Add 'selected' class to current tile and update state
+                tileDiv.classList.add('selected-for-draw');
+                tileSelectedForDrawing = tile.id;
+                selectedTileForDrawDisplay.textContent = `Selected: ${tile.name} (${tile.display})`;
+                console.log("Tile selected for drawing:", tileSelectedForDrawing); // DEBUG LINE
+            });
+            drawTileGridDisplay.appendChild(tileDiv);
+        });
+    }
+
+
+    // --- 12. Engine ---
+    function getHandFrequencyMap(handArray) {
+        const map = {};
+        TILE_TYPES.forEach(tile => map[tile.id] = 0); // Initialize all tile counts to 0
+        handArray.forEach(tileId => {
+            if (map.hasOwnProperty(tileId)) {
+                map[tileId]++;
+            } else {
+                // This case should ideally not happen if handArray only contains valid tile IDs
+                console.warn(`Unknown tileId in hand: ${tileId}`);
+                map[tileId] = 1; 
+            }
+        });
+        return map;
+    }
+
+    // Shanten for Seven Pairs (Chiitoitsu)
+    function calculateShanten_Chiitoitsu(handMap, numTilesInHand) {
+        if (numTilesInHand !== 13 && numTilesInHand !== 14) return Infinity; // Chiitoitsu needs 13 tiles for tenpai
+
+        let pairCount = 0;
+        let quadCount = 0; // 4 identical tiles count as 2 pairs for shanten, but prevent chiitoi win
+
+        for (const tileId in handMap) {
+            if (handMap[tileId] >= 2) {
+                pairCount++;
+            }
+            if (handMap[tileId] === 4) { // A quad makes Chiitoi impossible to complete as such
+                quadCount++;
+            }
+        }
+        // If hand is 14 tiles, we need to form 7 pairs. If 13, we need 6 pairs + 1 waiting for 7th.
+        // Shanten = 6 - number of pairs. If we have 4 of a kind, it complicates things for actual win.
+        // For shanten calc: a quad counts as two pairs towards reducing shanten.
+        // However, if a quad is present, Chiitoitsu is not a valid yaku with those 4 tiles.
+        // For raw shanten, let's count pairs.
+        let effectivePairCount = 0;
+        for (const tileId in handMap) {
+            if (handMap[tileId] >= 2) effectivePairCount++;
+            if (handMap[tileId] === 4) effectivePairCount++; // A kong counts as two pairs for shanten
         }
 
-        if (recommendation) {
-            const tileObj = TILE_TYPES.find(t => t.id === recommendation);
-            discardRecommendationEl.textContent = `Consider discarding: ${tileObj ? tileObj.name : recommendation} (${recommendation})`;
+        // Standard Chiitoitsu shanten: 6 - pairs. If 14 tiles, effectively need 7 pairs.
+        // A common way is 6 - num_pairs. If we have a 14 tile hand, we are looking to discard one.
+        // The shanten of a 13-tile hand is relevant.
+        // Let's consider a 13-tile hand for chiitoi shanten. If hand is 14, we'd try removing each tile.
+        // For now, if hand has 14 tiles, it's 1-shanten from a 7-pair tenpai if it has 6 pairs + 2 singles.
+        
+        // Simpler shanten: 6 - (count of tiles that appear >= 2 times)
+        // If 4 of a kind, it counts as one pair type, but prevents chiitoi yaku.
+        // Let's use the definition from "Riichi Book 1": Shanten = 6 - (number of pairs)
+        // If there's a tile present 4 times, it counts as 2 pairs for shanten purposes.
+        pairCount = 0;
+        let hasQuad = false;
+        for (const tileId in handMap) {
+            if (handMap[tileId] >= 2) pairCount++;
+            if (handMap[tileId] === 4) {
+                pairCount++; // The 4th tile forms a second pair with the 3rd
+                hasQuad = true;
+            }
+        }
+        
+        // For a 13 tile hand:
+        let shanten = 6 - pairCount;
+        if (numTilesInHand === 14) { // If 14 tiles, we need to discard one.
+            // If we have 7 pairs (pairCount == 7), then shanten is -1 (tenpai).
+            // Actually, if pairCount is 7 from 14 tiles, it means we have 7 distinct pairs. Shanten = -1 (win).
+            // If pairCount is 6 from 14 tiles, it means 6 pairs and 2 singles. Discarding one single -> 6 pairs, 1 single. Shanten = 0.
+            // This needs to be shanten for a 13 tile hand usually.
+            // For a 14 tile hand, one tile is extra.
+            // If after removing the "best" discard, the remaining 13 tiles have shanten X, then the 14 tile hand is X shanten.
+            // For now, let's calculate for the *current hand size*.
+            // A 14-tile hand with 7 pairs is a win (shanten -1).
+            // A 14-tile hand with 6 pairs and 2 singles is 0-shanten (discard a single to make 6 pairs + 1 single waiting for 7th pair).
+            shanten = 7 - pairCount -1; // 7 target pairs, -1 because we have an extra tile
+            // If pairCount is 7 -> shanten = 7-7-1 = -1 (win)
+            // If pairCount is 6 -> shanten = 7-6-1 = 0 (tenpai)
+            // If pairCount is 5 -> shanten = 7-5-1 = 1 
+        } else { // 13 tiles
+            shanten = 6 - pairCount;
+        }
+
+
+        // If hasQuad is true, this isn't a valid chiitoi win, but shanten can still be calculated this way.
+        // We might want to return Infinity if hasQuad for a "true" chiitoi path.
+        // For now, just calculate structural shanten.
+
+        return shanten;
+    }
+
+
+    // Shanten for Thirteen Orphans (Kokushi Musou)
+    function calculateShanten_Kokushi(handMap, numTilesInHand) {
+        if (numTilesInHand !== 13 && numTilesInHand !== 14) return Infinity;
+
+        const kokushiTiles = ['1m', '9m', '1p', '9p', '1s', '9s', 'ew', 'sw', 'ww', 'nw', 'wd', 'gd', 'rd'];
+        let uniqueKokushiTypesPresent = 0;
+        let hasPairOfKokushiTile = false;
+
+        kokushiTiles.forEach(ktId => {
+            if (handMap[ktId] > 0) {
+                uniqueKokushiTypesPresent++;
+                if (handMap[ktId] >= 2) {
+                    hasPairOfKokushiTile = true;
+                }
+            }
+        });
+
+        // For a 13-tile hand:
+        // Shanten = 13 - uniqueKokushiTypesPresent - (hasPairOfKokushiTile ? 1 : 0)
+        // This means if we have all 13 unique types, shanten = 13 - 13 - 0 = 0 (13-way wait)
+        // If we have 12 unique types + a pair of one of them, shanten = 13 - 12 - 1 = 0 (single wait)
+
+        let shanten;
+        if (numTilesInHand === 14) {
+            // With 14 tiles, one is extra.
+            // If we have all 13 unique types + one of them is paired -> shanten = -1 (win)
+            // If we have all 13 unique types + one extra unique (impossible) OR one extra non-kokushi -> shanten = 0 (discard non-kokushi for 13-way wait)
+            // If we have 12 unique types + one pair + one extra (either kokushi or not) -> shanten = 0 (discard the extra for single wait)
+            
+            // A simpler view for 14 tiles:
+            // Target is 13 unique + 1 pair (effectively 14 tiles for the pattern completion).
+            // Shanten = (13 - uniqueKokushiTypesPresent) + (hasPairOfKokushiTile ? 0 : 1) -1 (for the extra tile)
+            // If all 13 unique, no pair: (13-13) + 1 - 1 = 0 (13-way wait if we discard the 14th non-kokushi tile, or a kokushi tile if it's a 14th distinct one)
+            // If all 13 unique, one pair: (13-13) + 0 - 1 = -1 (tsumo)
+            // If 12 unique, one pair: (13-12) + 0 - 1 = 0 (single wait)
+            // If 12 unique, no pair: (13-12) + 1 - 1 = 1 (two-way wait for type or pair)
+
+            shanten = (13 - uniqueKokushiTypesPresent) + (hasPairOfKokushiTile ? 0 : 1);
+            // This is shanten for completing the 13-tile pattern. If we have 14, one is "discardable"
+            // So, if this value is X, the 14-tile hand is X-shanten.
+            // But this needs to consider the 14th tile itself.
+            // Let's use a common formulation:
+            // Standard 13-tile Kokushi: 13 types (shanten 0), or 12 types + 1 pair (shanten 0)
+            // If 14 tiles:
+            //  - If all 13 types present, and one is paired: win (-1 shanten)
+            //  - If all 13 types present, and the 14th is one of these 13 (forming a pair): win (-1 shanten)
+            //  - If all 13 types present, and 14th is different (non-kokushi): 0 shanten (discard non-kokushi)
+            //  - If 12 types present, one is paired, 14th is non-kokushi: 0 shanten (discard non-kokushi)
+            //  - If 12 types present, one is paired, 14th is the missing kokushi type: 0 shanten (discard one from pair)
+            
+            // Let's count how many of the 13 types we need, and if we need a pair.
+            let typesNeeded = 13 - uniqueKokushiTypesPresent;
+            let pairNeeded = hasPairOfKokushiTile ? 0 : 1;
+            shanten = typesNeeded + pairNeeded;
+            // This is for a 13 tile hand. If we have 14, it means we are 1 tile closer.
+            shanten = shanten -1;
+
+
+        } else { // 13 tiles
+            shanten = (13 - uniqueKokushiTypesPresent) + (hasPairOfKokushiTile ? 0 : 1);
+        }
+        return Math.max(-1, shanten); // Shanten can't be less than -1 (win)
+    }
+
+
+    // Placeholder for standard hand shanten
+    function calculateShanten_Standard(handMap, numTilesInHand) {
+        // This is the most complex one. We'll need a robust algorithm.
+        // For now, return a high number so it doesn't get chosen over others unless they are worse.
+        if (numTilesInHand < 13) return Infinity; // Not enough tiles
+        
+        // TODO: Implement actual standard shanten calculation.
+        // This involves finding melds (pon, chi, kan) and pairs (toitsu)
+        // and incomplete groups (taatsu like ryanmen, kanchan, penchan).
+        // A common recursive approach:
+        // 1. Remove all pairs one by one. For each removal:
+        // 2. From remaining tiles, remove all completed melds (chi, pon).
+        // 3. Count remaining proto-melds (taatsu).
+        // 4. Use formula: 8 - 2*MELDS - PROTOMELDS - PAIRS (adjust if pair wasn't fixed)
+        
+        // Super naive placeholder - just counts groups of 3 and pairs
+        let groups = 0;
+        let pairs = 0;
+        let tempHand = {...handMap}; // Make a copy
+
+        // Very rough pair count
+        for (const tileId in tempHand) {
+            if (tempHand[tileId] >= 2) pairs++;
+        }
+        // This is not how standard shanten works.
+        // For now, let's just return something that will be high.
+        return 8; // Max shanten is 8 (completely random 13 tiles, no pairs/groups)
+    }
+
+
+    function calculateOverallShanten(handArray) {
+        if (!handArray || handArray.length === 0) return Infinity;
+        const numTilesInHand = handArray.length;
+        const handMap = getHandFrequencyMap(handArray);
+
+        let minShanten = Infinity;
+
+        // Calculate shanten for different hand types
+        minShanten = Math.min(minShanten, calculateShanten_Standard(handMap, numTilesInHand));
+        minShanten = Math.min(minShanten, calculateShanten_Chiitoitsu(handMap, numTilesInHand));
+        minShanten = Math.min(minShanten, calculateShanten_Kokushi(handMap, numTilesInHand));
+        
+        return minShanten;
+    }
+
+    // --- Update getDiscardRecommendation to use shanten ---
+    function getDiscardRecommendation() {
+        discardRecommendationEl.textContent = "--"; // Clear previous
+
+        if (myCurrentHand.length !== 14) {
+            discardRecommendationEl.textContent = "Hand must have 14 tiles for discard recommendation.";
+            return;
+        }
+
+        let bestDiscard = null;
+        let bestShanten = Infinity;
+        let originalShanten = calculateOverallShanten(myCurrentHand); // Shanten of the 14-tile hand
+
+        // Iterate through each tile in hand, try discarding it, and calculate shanten of remaining 13
+        for (let i = 0; i < myCurrentHand.length; i++) {
+            const tileToDiscard = myCurrentHand[i];
+            
+            // Avoid trying to discard the same tile value multiple times if hand has duplicates
+            if (i > 0 && myCurrentHand[i] === myCurrentHand[i-1]) {
+                // If myCurrentHand is sorted, this skips redundant calculations for identical tiles
+                // Make sure myCurrentHand is sorted before this loop! (It is by addTileToMyHand)
+                continue; 
+            }
+
+            const tempHand = [...myCurrentHand];
+            tempHand.splice(i, 1); // Create a temporary 13-tile hand
+
+            const currentShanten = calculateOverallShanten(tempHand);
+
+            if (currentShanten < bestShanten) {
+                bestShanten = currentShanten;
+                bestDiscard = tileToDiscard;
+            }
+            // TODO: Add ukeire (number of useful tiles) as a tie-breaker if shanten is the same
+        }
+        
+        // The shanten of the 14-tile hand is the shanten of the best 13-tile hand it can form.
+        // So, bestShanten IS the shanten of our current 14-tile hand after optimal discard.
+        // originalShanten was more of a conceptual placeholder.
+        
+        let currentOverallShanten = bestShanten; // This is the shanten after the best discard
+
+        if (bestDiscard) {
+            const tileObj = TILE_TYPES.find(t => t.id === bestDiscard);
+            discardRecommendationEl.textContent = `Shanten: ${currentOverallShanten}. Consider discarding: ${tileObj ? tileObj.name : bestDiscard} (${bestDiscard})`;
+        } else if (myCurrentHand.length > 0) {
+            // Fallback if somehow no best discard was found (e.g., all discards lead to same shanten)
+            // This case should be handled by the loop finding at least one option.
+            // Or if the hand is already a win (shanten -1 for the 13-tile hand after discarding the tsumo tile).
+            if (currentOverallShanten === -1) { // Means the 13-tile hand is complete
+                discardRecommendationEl.textContent = `TSUMO! Shanten: -1. Discard: ${myCurrentHand[myCurrentHand.length-1]} (last drawn as winning tile).`;
+                // Actually, if hand is 14 and shanten is -1, it means one tile makes it a win.
+                // The 'bestDiscard' logic should find the tile that *isn't* part of the win.
+                // Revisit logic for -1 shanten display.
+            } else {
+                discardRecommendationEl.textContent = `Shanten: ${currentOverallShanten}. No single best discard found by basic logic. (Hand: ${myCurrentHand.join(', ')})`;
+            }
         } else {
-            discardRecommendationEl.textContent = "No obvious discard / Hand empty or not 14 tiles.";
+            discardRecommendationEl.textContent = "Hand empty.";
         }
     }
 
 
     // --- Initialize the UI components ---
     initializeDiscardTracker();
-    initializeDrawnTileSelector();
+    //initializeDrawnTileSelector();
+    initializeDrawTileGrid();
     updateAllInGameCounts(); // ** NEW: Initialize all "in game" counts considering empty hand at start **
     updateMyHandDisplay(); // ** NEW: Initialize hand display (will be empty) **
     getDiscardRecommendation(); // ** NEW: Initial call (will show no recommendation) **
