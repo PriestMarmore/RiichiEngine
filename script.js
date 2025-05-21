@@ -453,13 +453,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 9. Discard Recommendation Logic --- ** NEW SECTION (Basic Placeholder) **
     function getDiscardRecommendation() {
-        discardRecommendationEl.textContent = "--"; // Clear previous recommendation
+        discardRecommendationEl.textContent = "--"; // Clear previous
 
         if (myCurrentHand.length !== 14) {
-            // Only provide recommendations for a 14-tile hand (after drawing, before discarding)
-            // You could also show shanten for a 13-tile hand if desired, but discard rec is for 14.
+            // ... (your existing message for non-14 tile hands)
             if (myCurrentHand.length === 13) {
-                const currentShanten = calculateOverallShanten(myCurrentHand);
+                console.log("Calling calculateOverallShanten from getDiscardRec 13-tile check with hand length:", myCurrentHand.length, myCurrentHand);
+                const currentShanten = calculateOverallShanten(myCurrentHand); // This is correct for 13 tiles
                 discardRecommendationEl.textContent = `Current Shanten (13 tiles): ${currentShanten}. Draw a tile.`;
             } else {
                 discardRecommendationEl.textContent = "Hand must have 14 tiles for discard recommendation.";
@@ -467,51 +467,61 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        let bestDiscardCandidate = null; // The tile ID of the best tile to discard
-        let shantenAfterBestDiscard = Infinity; // The shanten of the hand *after* discarding the best candidate
-        let ukeireForBestDiscard = -1; // Use -1 to ensure any valid ukeire is better
+        let bestDiscardCandidate = null;
+        let shantenAfterBestDiscard = Infinity;
+        let ukeireForBestCandidate = -1; // For the 13-tile hand AFTER the best discard
 
-        const uniqueTilesInHand = [...new Set(myCurrentHand)];
+        // Use a set to iterate over unique tiles to discard to avoid redundant calculations
+        // especially if hand is not pre-sorted or if we don't want to rely on sorting for this specific loop
+        const uniqueTilesToConsiderDiscarding = [...new Set(myCurrentHand)];
 
-        for (const tileToDiscard of uniqueTilesInHand) {
+        for (const tileToDiscard of uniqueTilesToConsiderDiscarding) {
             const temp13Hand = [...myCurrentHand];
-            const indexToRemove = temp13Hand.indexOf(tileToDiscard);
+            const indexToRemove = temp13Hand.indexOf(tileToDiscard); // Find first instance
             if (indexToRemove > -1) {
                 temp13Hand.splice(indexToRemove, 1);
             } else {
+                // Should not happen if tileToDiscard came from myCurrentHand
+                console.error("Tile to discard not found in hand during iteration:", tileToDiscard);
                 continue;
             }
 
-            console.log(`--- Testing Discard: ${tileToDiscard} ---`);
-            const currentShantenOf13TileHand = calculateOverallShanten(temp13Hand); // This calls your new standard shanten
-            console.log(`Hand after discard (${temp13Hand.length} tiles): ${temp13Hand.join(' ')}`);
-            console.log(`>>> Calculated Shanten for this 13-tile hand: ${currentShantenOf13TileHand}`);
+            // console.log(`--- Testing Discard: ${tileToDiscard} ---`);
+            console.log("Calling calculateOverallShanten from getDiscardRec loop with hand length:", temp13Hand.length, temp13Hand);
+            const shantenOfThis13TileHand = calculateOverallShanten(temp13Hand);
+            // console.log(`Hand after discard ${tileToDiscard} (${temp13Hand.length} tiles): ${temp13Hand.join(' ')}`);
+            // console.log(`>>> Calculated Shanten for this 13-tile hand: ${shantenOfThis13TileHand}`);
 
-            let currentUkeireData = { count: 0, tiles: {} };
+            let ukeireCountForThis13TileHand = 0;
+            // let ukeireTilesForThis13TileHand = {}; // If you want to store the actual tiles
 
-            if (currentShantenOf13TileHand <= 2) { // Only calculate ukeire for hands close to tenpai (e.g., <= 2 shanten)
-                                                // Or adjust this threshold as desired. Ukeire for high shanten is less critical.
-                currentUkeireData = calculateUkeire(temp13Hand);
-                console.log(`Ukeire: ${currentUkeireData.count}`);
+            // Only calculate ukeire if this discard option is a contender
+            if (shantenOfThis13TileHand <= shantenAfterBestDiscard) {
+                if (shantenOfThis13TileHand <= 2) { // Your threshold for meaningful ukeire calculation
+                    const ukeireData = calculateUkeire(temp13Hand);
+                    ukeireCountForThis13TileHand = ukeireData.count;
+                    // ukeireTilesForThis13TileHand = ukeireData.tiles; // Store if needed for display
+                    // console.log(`Ukeire for ${tileToDiscard} -> 13-hand: ${ukeireCountForThis13TileHand}`);
+                }
             }
 
-
-            if (currentShantenOf13TileHand < shantenAfterBestDiscard) {
-                shantenAfterBestDiscard = currentShantenOf13TileHand;
+            if (shantenOfThis13TileHand < shantenAfterBestDiscard) {
+                shantenAfterBestDiscard = shantenOfThis13TileHand;
                 bestDiscardCandidate = tileToDiscard;
-                ukeireForBestCandidate = currentUkeireData.count;
-                console.log(`New best: Discard ${tileToDiscard}, Shanten: ${shantenAfterBestDiscard}, Ukeire: ${ukeireForBestCandidate}`);
-            } else if (currentShantenOf13TileHand === shantenAfterBestDiscard) {
-                if (currentUkeireData.count > ukeireForBestCandidate) {
+                ukeireForBestCandidate = ukeireCountForThis13TileHand;
+                // console.log(`New best: Discard ${tileToDiscard}, Shanten: ${shantenAfterBestDiscard}, Ukeire: ${ukeireForBestCandidate}`);
+            } else if (shantenOfThis13TileHand === shantenAfterBestDiscard) {
+                if (ukeireCountForThis13TileHand > ukeireForBestCandidate) {
                     bestDiscardCandidate = tileToDiscard;
-                    ukeireForBestCandidate = currentUkeireData.count;
-                    console.log(`Ukeire tie-break: Discard ${tileToDiscard}, Shanten: ${shantenAfterBestDiscard}, Ukeire: ${ukeireForBestCandidate}`);
+                    ukeireForBestCandidate = ukeireCountForThis13TileHand; // Update ukeire
+                    // console.log(`Ukeire tie-break: Discard ${tileToDiscard}, Shanten: ${shantenAfterBestDiscard}, Ukeire: ${ukeireForBestCandidate}`);
                 }
                 // TODO: Further tie-breaking (e.g. tile safety, value of tiles being kept)
             }
         }
         
-        const effectiveShantenOf14TileHand = shantenAfterBestDiscard;
+        // shantenAfterBestDiscard IS the shanten of our 14-tile hand.
+        const effectiveShantenOf14TileHand = shantenAfterBestDiscard; 
 
         if (bestDiscardCandidate) {
             const tileObj = TILE_TYPES.find(t => t.id === bestDiscardCandidate);
@@ -520,52 +530,24 @@ document.addEventListener('DOMContentLoaded', () => {
             let recommendationText = `Shanten: ${effectiveShantenOf14TileHand}. `;
             recommendationText += `Discard: ${tileDisplayName}.`;
 
-            // Only show ukeire if it was calculated and is meaningful (e.g., for low shanten hands)
-            // ukeireForBestCandidate is initialized to -1, so >= 0 means it was calculated.
-            // We might also only want to show it if shanten is low enough to be actively waiting.
-            if (ukeireForBestCandidate >= 0 && effectiveShantenOf14TileHand <= 2) { // Example: Show for 2-shanten or better
+            if (ukeireForBestCandidate >= 0 && effectiveShantenOf14TileHand <= 2) {
                 recommendationText += ` (Ukeire: ${ukeireForBestCandidate})`;
-                // You could also display the specific useful tiles if calculateUkeire returns them
-                // For example, if calculateUkeire returns { count: X, tiles: {'1m': 2, '2p': 4} }
-                // const ukeireDetails = calculateUkeire( resulting 13 tile hand ); // if you need the tiles object
-                // if (ukeireDetails.tiles && Object.keys(ukeireDetails.tiles).length > 0) {
-                //     let usefulTilesStr = Object.entries(ukeireDetails.tiles)
-                //                              .map(([id, count]) => `${TILE_TYPES.find(t=>t.id===id).display}(${count})`)
-                //                              .join(' ');
-                //     recommendationText += ` Waits: ${usefulTilesStr}`;
-                // }
+                // You might want to re-calculate ukeire for the *actual best* 13-tile hand to display its specific tiles
+                // const best13Hand = [...myCurrentHand];
+                // best13Hand.splice(myCurrentHand.indexOf(bestDiscardCandidate), 1);
+                // const ukeireDetailsForDisplay = calculateUkeire(best13Hand);
+                // if (ukeireDetailsForDisplay.tiles && Object.keys(ukeireDetailsForDisplay.tiles).length > 0) { ... }
             }
             discardRecommendationEl.textContent = recommendationText;
 
         } else if (myCurrentHand.length > 0) {
-            // This block is reached if the loop finishes and bestDiscardCandidate is still null.
-            // This could happen if:
-            // 1. The hand is already a win (shantenAfterBestDiscard would be -1).
-            // 2. All shanten calculations resulted in Infinity (e.g., errors in shanten functions).
-            // 3. The initial hand was empty or too small for the loop to run (but caught earlier).
-
+            // ... (your existing fallback/error conditions for no best discard) ...
             if (effectiveShantenOf14TileHand === -1) {
-                // If shanten is -1, it means the hand (after the "best discard", which is the winning tile itself) is complete.
-                // We need to identify which tile was the "winning tile" if it was just drawn.
-                // This logic might need to be more nuanced based on how -1 shanten is determined.
-                // For now, just indicating a completed hand.
-                discardRecommendationEl.textContent = `TSUMO! Hand complete. Shanten: -1.`;
-                // Ideally, the "discard" would be the tile that was just drawn to complete the hand,
-                // but the current loop finds the tile to remove from 14 to *leave* 13 winning tiles.
-                // If the 14th tile was the winning one, `bestDiscardCandidate` should correctly be that tile.
-            } else if (effectiveShantenOf14TileHand === Infinity) {
-                discardRecommendationEl.textContent = "Error: Could not calculate shanten for any discard.";
+                discardRecommendationEl.textContent = `TSUMO! Shanten: -1. (Discard the tile just drawn if it was the winning one).`;
             } else {
-                // This case implies the loop ran but didn't set bestDiscardCandidate,
-                // which means shantenAfterBestDiscard might still be Infinity.
-                // Or, if all options had equal shanten and equal ukeire (and no further tie-breaking).
-                // For a 14-tile hand, there should always be *a* tile to discard.
-                // If this happens, it's likely an edge case in the logic or shanten calcs.
-                discardRecommendationEl.textContent = `Shanten: ${effectiveShantenOf14TileHand}. No single best discard determined (may need more tie-breakers or check logic).`;
+                discardRecommendationEl.textContent = `Shanten: ${effectiveShantenOf14TileHand}. No single best discard found by current logic (may need tie-breakers).`;
             }
         } else {
-            // This case (myCurrentHand.length === 0) should have been caught by the initial check
-            // in getDiscardRecommendation.
             discardRecommendationEl.textContent = "Hand empty.";
         }
     }
@@ -923,6 +905,7 @@ function getInGameTileCounts() {
                 const indexToRemove = temp13Hand.indexOf(tileToDiscardFrom14);
                 if (indexToRemove > -1) {
                     temp13Hand.splice(indexToRemove, 1);
+                    console.log("Calling calculateOverallShanten from calculateUkeire with hand length:", temp13Hand.length, temp13Hand);
                     shantenOf14TileHand = Math.min(shantenOf14TileHand, calculateOverallShanten(temp13Hand));
                 }
             }
@@ -940,6 +923,7 @@ function getInGameTileCounts() {
 
 
     function calculateOverallShanten(handArray) {
+        console.log("calculateOverallShanten received hand with length:", handArray ? handArray.length : 'null or undefined', handArray);
         if (!handArray || handArray.length === 0) return Infinity;
         const numTilesInHand = handArray.length;
         const handMap = getHandFrequencyMap(handArray);
@@ -967,7 +951,7 @@ function getInGameTileCounts() {
 
         let bestDiscard = null;
         let bestShanten = Infinity;
-        let originalShanten = calculateOverallShanten(myCurrentHand); // Shanten of the 14-tile hand
+        //let originalShanten = calculateOverallShanten(myCurrentHand); // Shanten of the 14-tile hand
 
         // Iterate through each tile in hand, try discarding it, and calculate shanten of remaining 13
         for (let i = 0; i < myCurrentHand.length; i++) {
