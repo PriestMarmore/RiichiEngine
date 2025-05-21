@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Riichi Mahjong Helper</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <nav class="navigation">
+            <button id="myTurnBtn" class="nav-button active">My Turn</button>
+            <button id="othersTurnBtn" class="nav-button">Other Players' Discards</button>
+        </nav>
+
+        <main class="content-area">
+            <!-- "My Turn" Section -->
+            <div id="myTurnSection" class="tab-content active-content">
+                <h2>My Turn</h2>
+
+                <div class="drawn-tile-input">
+                    <label for="drawnTileSelector">Tile I Drew:</label>
+                    <!-- We'll populate this selector with tiles later -->
+                    <select id="drawnTileSelector" name="drawnTile">
+                        <option value="">--Select Tile--</option>
+                        <!-- Example: <option value="1m">1 Man</option> -->
+                    </select>
+                    <button id="confirmDrawBtn">Confirm Draw</button>
+                </div>
+
+                <div class="my-hand">
+                    <h3>My Hand:</h3>
+                    <div id="handDisplay" class="tile-collection">
+                        <!-- Hand tiles will be dynamically added here -->
+                        <!-- e.g., <div class="tile">🀇</div> -->
+                    </div>
+                </div>
+
+                <div class="recommendation">
+                    <h3>Recommendation:</h3>
+                    <p id="discardRecommendation">--</p>
+                </div>
+            </div>
+
+            <!-- "Other Players' Discards" Section -->
+            <div id="othersTurnSection" class="tab-content">
+                <h2>Other Players' Discards Tracker</h2>
+                <div id="discardTrackerGrid" class="tile-grid">
+                    <!-- Tiles for tracking will be dynamically added here -->
+                    <!-- Example structure for one tile:
+                    <div class="tile-tracker-item" data-tile-id="1m">
+                        <span class="tile-representation">1m</span>
+                        <span class="discard-count">0</span> / 4
+                        (In Game: <span class="in-game-count">4</span>)
+                    </div>
+                    -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script> <!-- We'll add JS later -->
+</body>
+</html>

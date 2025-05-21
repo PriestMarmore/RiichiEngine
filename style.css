@@ -1,0 +1,152 @@
+body {
+    font-family: sans-serif;
+    margin: 0;
+    background-color: #f0f0f0;
+    color: #333;
+}
+
+.app-container {
+    max-width: 900px; /* Or your preferred max width */
+    margin: 20px auto;
+    padding: 15px;
+    background-color: #fff;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+.navigation {
+    display: flex;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #ccc;
+}
+
+.nav-button {
+    padding: 10px 15px;
+    cursor: pointer;
+    border: none;
+    background-color: transparent;
+    font-size: 1em;
+    border-bottom: 3px solid transparent; /* For active state */
+}
+
+.nav-button.active {
+    border-bottom-color: #007bff;
+    font-weight: bold;
+}
+
+.tab-content {
+    display: none; /* Hide all tab content by default */
+}
+
+.tab-content.active-content {
+    display: block; /* Show only the active tab's content */
+}
+
+h2, h3 {
+    color: #0056b3;
+}
+
+/* Placeholder for tile grid in "Other Players' Discards" */
+.tile-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); /* Responsive grid */
+    gap: 10px;
+    margin-top: 15px;
+}
+
+/* Placeholder for individual tile tracker item */
+.tile-tracker-item {
+    border: 1px solid #ddd;
+    padding: 8px 5px; /* Adjust padding: top/bottom L/R */
+    text-align: center;
+    background-color: #fdfdfd; /* Lighter background for items */
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between; /* Pushes content within the item apart if space allows */
+    min-height: 90px; /* Adjust as needed to fit image and text comfortably */
+    box-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+}
+
+.tile-tracker-item .tile-representation {
+    font-size: 1.5em; /* Make tile representation larger */
+    display: block;
+    margin-bottom: 5px;
+}
+
+.tile-tracker-item .tile-image { /* If using images */
+    width: 35px;  /* Adjust so 9 can fit comfortably */
+    height: auto;
+    display: block;
+    margin-bottom: 5px;
+}
+
+.tile-tracker-item .count-info {
+    font-size: 0.8em; /* Make text a bit smaller to fit */
+    line-height: 1.2;
+    /* text-align: center; /* Already centered by .tile-tracker-item align-items */
+}
+
+.tile-tracker-item .bold-count {
+    font-weight: bold;
+}
+
+/* Placeholder for hand display */
+.my-hand #handDisplay {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    padding: 10px;
+    border: 1px solid #eee;
+    background-color: #fdfdfd;
+    min-height: 40px; /* So it's visible even when empty */
+}
+
+.tile {
+    display: inline-flex; /* Or flex, if you want to center the image inside */
+    align-items: center;
+    justify-content: center;
+    /* Remove fixed width/height from .tile if image will dictate size,
+       OR set .tile dimensions and make image fit (e.g., max-width: 100%) */
+    /* border: 1px solid #333; /* Keep if you want a border around the image container */
+    /* background-color: #fffaf0; /* May not be needed if image has background */
+    cursor: pointer;
+    margin: 2px;
+    padding: 2px; /* Optional padding around the image inside the tile div */
+    /* box-shadow: 1px 1px 3px rgba(0,0,0,0.2); /* Keep if desired */
+}
+
+.tile .tile-image-hand {
+    width: 35px; /* Adjust as needed for hand tiles */
+    height: auto; /* Maintain aspect ratio */
+    display: block; /* Good practice for images within containers */
+}
+
+/* Basic styling for input areas */
+.drawn-tile-input, .recommendation {
+    margin-bottom: 20px;
+    padding: 10px;
+    border: 1px solid #e0e0e0;
+    background-color: #f9f9f9;
+}
+
+.drawn-tile-input label {
+    margin-right: 10px;
+}
+
+.drawn-tile-input select, .drawn-tile-input button {
+    padding: 8px;
+    font-size: 0.9em;
+}
+
+/* This is the container for the discard tracker items */
+#discardTrackerGrid { /* Or .tile-grid if you're targeting the class */
+    display: grid;
+    /* Explicitly set 9 columns. Each column will take up an equal fraction of the available space. */
+    grid-template-columns: repeat(9, 1fr);
+    gap: 10px; /* Space between grid items */
+    margin-top: 15px;
+    padding: 5px; /* Optional: adds a little padding around the whole grid */
+    border: 1px solid #ccc; /* Optional: border for the grid container */
+    background-color: #e9e9e9; /* Optional: slight background for the grid area */
+}
