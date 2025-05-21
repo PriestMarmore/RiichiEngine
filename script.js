@@ -46,6 +46,134 @@ document.addEventListener('DOMContentLoaded', () => {
     let tileSelectedForDrawing = null;
 
 
+    // --- 13.  ---
+    function cloneHandMap(handMap) {
+        return { ...handMap }; // Shallow copy, sufficient for our frequency map
+    }
+
+    function extractMaxMelds(originalHandMap) {
+        let handMap = cloneHandMap(originalHandMap);
+        let meldCount = 0;
+        let tilesProcessedInLoop; // To detect if the loop made any changes
+
+        // Iterate multiple times or until no more melds can be formed,
+        // as removing one meld might enable another. 2-3 passes are often enough.
+        for (let pass = 0; pass < 3; pass++) {
+            tilesProcessedInLoop = false;
+
+            // Prioritize Koutsu (Triplets)
+            for (const tileType of TILE_TYPES) { // Iterate in a defined order (e.g., TILE_TYPES order)
+                const tileId = tileType.id;
+                if (handMap[tileId] >= 3) {
+                    meldCount++;
+                    handMap[tileId] -= 3;
+                    tilesProcessedInLoop = true;
+                }
+            }
+
+            // Then try to find Shuntsu (Sequences)
+            for (const suit of ['m', 'p', 's']) {
+                for (let num = 1; num <= 7; num++) { // Sequences can start from 1 up to 7
+                    const t1 = num + suit;
+                    const t2 = (num + 1) + suit;
+                    const t3 = (num + 2) + suit;
+
+                    // Greedily take sequences as long as possible
+                    while (handMap[t1] > 0 && handMap[t2] > 0 && handMap[t3] > 0) {
+                        meldCount++;
+                        handMap[t1]--;
+                        handMap[t2]--;
+                        handMap[t3]--;
+                        tilesProcessedInLoop = true;
+                    }
+                }
+            }
+            if (!tilesProcessedInLoop) break; // If a pass makes no changes, no more melds to find
+        }
+
+        return { meldCount, remainingHandMap: handMap };
+    }
+
+    function extractMaxTaatsus(originalHandMap) {
+        let handMap = cloneHandMap(originalHandMap);
+        let taatsuCount = 0;
+        let tilesProcessedInLoop;
+
+        // Iterate a few times, similar to meld extraction
+        for (let pass = 0; pass < 2; pass++) { // Taatsu are simpler, fewer passes needed
+            tilesProcessedInLoop = false;
+
+            // Prioritize Pairs as Taatsu (one step from Koutsu)
+            for (const tileType of TILE_TYPES) {
+                const tileId = tileType.id;
+                if (handMap[tileId] >= 2) {
+                    taatsuCount++;
+                    handMap[tileId] -= 2;
+                    tilesProcessedInLoop = true;
+                }
+            }
+
+            // Then Ryanmen (e.g., 23m waiting for 1m or 4m)
+            for (const suit of ['m', 'p', 's']) {
+                for (let num = 1; num <= 8; num++) { // Ryanmen can be 12 up to 89
+                    const t1 = num + suit;
+                    const t2 = (num + 1) + suit;
+                    if (num === 9) continue; // No t2 for num=9
+
+                    while (handMap[t1] > 0 && handMap[t2] > 0) {
+                        taatsuCount++;
+                        handMap[t1]--;
+                        handMap[t2]--;
+                        tilesProcessedInLoop = true;
+                    }
+                }
+            }
+            
+            // Then Penchan (e.g., 12m waiting for 3m; 89m waiting for 7m)
+            // (Ryanmen logic above partly covers some Penchan if we are not careful, need to be specific)
+            // Let's refine: Penchan 12 and 89. Kanchan 1_3.
+            for (const suit of ['m', 'p', 's']) {
+                // Penchan 1-2
+                if (handMap[`1${suit}`] > 0 && handMap[`2${suit}`] > 0) {
+                    while (handMap[`1${suit}`] > 0 && handMap[`2${suit}`] > 0) { // check again in while
+                        taatsuCount++;
+                        handMap[`1${suit}`]--;
+                        handMap[`2${suit}`]--;
+                        tilesProcessedInLoop = true;
+                    }
+                }
+                // Penchan 8-9
+                if (handMap[`8${suit}`] > 0 && handMap[`9${suit}`] > 0) {
+                    while (handMap[`8${suit}`] > 0 && handMap[`9${suit}`] > 0) {
+                        taatsuCount++;
+                        handMap[`8${suit}`]--;
+                        handMap[`9${suit}`]--;
+                        tilesProcessedInLoop = true;
+                    }
+                }
+            }
+
+            // Then Kanchan (e.g., 24m waiting for 3m)
+            for (const suit of ['m', 'p', 's']) {
+                for (let num = 1; num <= 7; num++) { // Kanchan can be 1_3 up to 7_9
+                    const t1 = num + suit;
+                    const t3 = (num + 2) + suit;
+                    
+                    while (handMap[t1] > 0 && handMap[t3] > 0) {
+                        taatsuCount++;
+                        handMap[t1]--;
+                        handMap[t3]--;
+                        tilesProcessedInLoop = true;
+                    }
+                }
+            }
+            if (!tilesProcessedInLoop) break;
+        }
+        // Any remaining single tiles are isolated. We don't explicitly count them here,
+        // the shanten formula will implicitly penalize for lack of groups.
+        return { taatsuCount, remainingHandMap: handMap };
+    }
+
 
     // --- 2. Tab Switching Logic --- (No changes here)
     function setActiveTab(tabName) {
@@ -672,264 +800,75 @@ function handMapToSortedArray(handMap) {
 }
 
 
-function calculateShanten_Standard(handMap, numTilesInHand) {
-    if (numTilesInHand === 0) return 8; // 8 away from 4 melds, 1 pair
-    if (numTilesInHand > 14 || numTilesInHand < 0) return Infinity; // Invalid hand size for this basic calc
-
-    let minShanten = 8; // Max shanten for a 13/14 tile hand without groups
-
-    // Recursive function
-    // Parameters:
-    //   hand: current hand frequency map
-    //   melds: number of complete melds found
-    //   pairs: number of pairs found (we only care about 0 or 1 for the main pair for now)
-    //   taatsus: number of incomplete groups found
-    function findShantenRecursive(currentHandMap, tilesLeft, melds, hasPair) {
-        // Base case: No tiles left
-        if (tilesLeft === 0) {
-            // Shanten formula: 8 - 2 * melds - (taatsus_or_pair_if_no_taatsus) - (1 if hasPair else 0)
-            // A common formula for shanten is aiming for (4 melds + 1 pair).
-            // Shanten = (Target complete groups needed) * 2 + (Target pairs needed) - 1 (if no pair)
-            // More simply: 8 - (2 * melds) - (number of pair/taatsu blocks, max 5 - melds)
-            // If hasPair, we need 4 melds. Shanten roughly 2 * (4 - melds).
-            // If noPair, we need 4 melds and 1 pair. Shanten roughly 2 * (4-melds) + 1.
-            
-            // Simplified: how many more melds/pair do we need?
-            // Each meld reduces shanten by 2, each pair/taatsu by 1. Start at 8.
-            let currentShanten = 8 - (2 * melds);
-            if (hasPair) {
-                currentShanten -= 1; // Pair contributes 1 to reducing shanten
-            } else {
-                // If no pair, and we need one, effectively shanten is +1 worse
-                // unless a taatsu can become a pair.
-                // This recursive approach will find taatsus implicitly.
-            }
-            
-            // If we have more than 4 melds with a pair, or 5 melds without a pair, it's unusual.
-            // The recursion should try to form at most 4 melds + 1 pair.
-
-            // For this recursive structure, the "taatsu" count is implicit.
-            // When tilesLeft is 0, we have `melds` and `hasPair`.
-            // If hasPair, target is 4 melds. Shanten = 2 * (4 - melds).
-            // If !hasPair, target is 4 melds + 1 pair. Shanten = 2 * (4 - melds) + 1.
-            // This is for a 13-tile hand.
-            let shantenVal;
-            if (hasPair) {
-                shantenVal = Math.max(0, (4 - melds)) * 2 - 1; // -1 for tenpai (0 melds to make), not +0
-                // e.g. 4 melds, 1 pair -> (4-4)*2 - 1 = -1 (win)
-                // 3 melds, 1 pair -> (4-3)*2 - 1 = 1 shanten
-            } else {
-                shantenVal = Math.max(0, (4 - melds)) * 2 + 1;
-                // e.g. 4 melds, 0 pair -> (4-4)*2 + 1 = 1 shanten (need pair)
-                // 3 melds, 0 pair -> (4-3)*2 + 1 = 3 shanten
-            }
-            //This formula is for a 13 tile hand. The recursion gets it to 0 tiles.
-            //Let's use a standard shanten calculation method for the blocks.
-            //Number of blocks = melds + (hasPair ? 1 : 0)
-            //Shanten = 8 - 2*melds - (hasPair?1:0) - (tilesLeft if they form taatsu)
-            //This recursive structure is tricky. Let's use a common iterative refinement.
-
-            // The shanten for 0 tiles left, given `melds` and `hasPair`:
-            // If we have 4 melds and 1 pair, shanten = -1 (win)
-            // If we have 3 melds and 1 pair, need 1 meld (2 tiles) -> 1 shanten
-            // If we have 4 melds and 0 pair, need 1 pair (1 tile) -> 1 shanten
-            
-            // Max blocks = 5 (4 melds + 1 pair)
-            let blocks = melds + (hasPair ? 1 : 0);
-            if (blocks > 5) blocks = 5; // Cannot have more than 5 effective groups
-            
-            // This is shanten based on completed groups for a 13 tile hand
-            let currentShantenVal = 8 - (2 * melds) - (hasPair ? 1 : 0);
-            // If we don't have a pair, and we have less than 4 melds,
-            // one of the "needed melds" could be a pair.
-            // It's simpler to count taatsus separately.
-
-            // Let's use a different recursive state:
-            // findShantenRecursive(index_in_sorted_hand_array, melds, pairs_or_taatsu_count)
-            // This requires a full hand array to pass around.
-            // For now, this placeholder will remain until a proper algorithm is chosen and implemented.
-            console.warn("Recursive shanten standard is a STUB!");
-            return 8; // Fallback to high shanten
+    function calculateShanten_Standard(handMap13Tiles, numTilesInHand) {
+        // This function expects a 13-tile hand represented by handMap13Tiles.
+        // For getDiscardRecommendation, it will always be called with a 13-tile handMap.
+        if (numTilesInHand !== 13) {
+            // Fallback for non-13 tile hands (e.g. if called directly for ukeire on smaller parts)
+            if (numTilesInHand === 0) return 8; // Max shanten for 0 tiles from 4m1p
+            if (numTilesInHand < 0) return Infinity;
+            // For hands < 13, shanten is generally higher.
+            // A simple approximation: each missing tile from 13 adds roughly 1 to shanten.
+            // However, a dedicated shanten for incomplete hands is more complex.
+            // For now, let's assume this function is primarily for 13-tile evaluation.
+            // If called with, say, 11 tiles, it means we're 2 tiles short of 13,
+            // which is already 2 shanten points worse than a 13 tile hand.
+            // The standard 8-2M-T-P formula is based on 13 tiles.
+            // Let's return a high value if not 13, to indicate it's not the primary use case.
+            console.warn(`calculateShanten_Standard was called with ${numTilesInHand} tiles. Designed for 13. Returning estimated high shanten.`);
+            return 8; // Or perhaps 8 - (numTilesInHand / 2.5) if you want some scaling.
+                    // Sticking to 8 if not 13 simplifies for now.
         }
 
-        // If melds + (hasPair?1:0) >= 5, no more groups needed.
-        // Remaining tiles are "excess". Each excess tile adds 1 to shanten.
-        // This path needs to be more refined. If 4 melds and 1 pair found, tilesLeft must be 0.
-        if (melds + (hasPair ? 1:0) >= (numTilesInHand === 14 ? 5 : (numTilesInHand === 13 ? 5 : Math.ceil(numTilesInHand/2.5) ) ) ) {
-           // A hand of 14 tiles: 4 melds, 1 pair (5 groups), 1 discard tile.
-           // If we target 13 tiles (after discard):
-           // If we have 4 melds and 1 pair (total 5 groups) from 13 tiles, it's a win.
-           // If tilesLeft > 0 here, it means we formed groups too "efficiently" or something is wrong.
-           // This path is effectively shanten = tilesLeft if all groups formed.
-           // This simplified recursion isn't robust enough yet.
+        let minShantenOverall = 8; // Max possible shanten for a 13-tile hand
+
+        // === Case 1: Atama Nashi (No fixed pair yet / Consider hand as 5 blocks needed) ===
+        // Try to form up to 5 blocks (4 melds + 1 pair candidate from taatsu/isolated)
+        let noPairHandMap = cloneHandMap(handMap13Tiles);
+        let { meldCount: meldsNoPair, remainingHandMap: remNoPairAfterMelds } = extractMaxMelds(noPairHandMap);
+        let { taatsuCount: taatsusNoPairOriginal } = extractMaxTaatsus(remNoPairAfterMelds);
+
+        // How many blocks do we have? meldsNoPair + taatsusNoPairOriginal
+        // We need 5 blocks. One of the taatsus (if any) will act as the pair.
+        // If no taatsus, we need to form a pair from scratch (costs more shanten).
+        let shantenNoPair;
+        // Max 5 blocks (M + T) are useful.
+        let effectiveTaatsuBlocksNoPair = Math.min(taatsusNoPairOriginal, 5 - meldsNoPair);
+        if (5 - meldsNoPair < 0) effectiveTaatsuBlocksNoPair = 0; // e.g. 5+ melds (kans involved)
+
+        shantenNoPair = 8 - (2 * meldsNoPair) - effectiveTaatsuBlocksNoPair;
+        // If no taatsu could become a pair (e.g., effectiveTaatsuBlocksNoPair was 0 and we needed a pair block,
+        // or all taatsu were non-pair types and we needed a pair), add 1.
+        // This needs careful checking if `extractMaxTaatsus` distinguishes pair-taatsu.
+        // Our `extractMaxTaatsus` prioritizes pairs. So if taatsusNoPairOriginal > 0, a pair candidate exists.
+        if (taatsusNoPairOriginal === 0 && meldsNoPair < 5) { // No taatsu to form a pair from, and not enough melds
+            shantenNoPair++; // Penalty because we need to form a pair from isolated tiles.
         }
+        minShantenOverall = Math.min(minShantenOverall, shantenNoPair);
 
 
-        // Find the first tile available in currentHandMap
-        let firstTileId = null;
-        for (const tile of TILE_TYPES) { // Iterate in a defined order
-            if (currentHandMap[tile.id] > 0) {
-                firstTileId = tile.id;
-                break;
-            }
-        }
+        // === Case 2: Atama Ari (Iterate through all possible pairs) ===
+        // Get unique tile IDs that can form a pair
+        const uniqueTileIdsForPairCandidates = Object.keys(handMap13Tiles).filter(id => handMap13Tiles[id] >= 2);
 
-        if (!firstTileId) { // Should be caught by tilesLeft === 0
-            return 8;
-        }
+        for (const pairTileId of uniqueTileIdsForPairCandidates) {
+            let withPairHandMap = cloneHandMap(handMap13Tiles);
+            withPairHandMap[pairTileId] -= 2; // Remove the chosen pair (now 11 tiles left)
 
-        let currentMinShantenForBranch = 8; // Max shanten for this recursive path
+            let { meldCount: meldsWithPair, remainingHandMap: remWithPairAfterMelds } = extractMaxMelds(withPairHandMap);
+            let { taatsuCount: taatsusWithPair } = extractMaxTaatsus(remWithPairAfterMelds);
 
-        // Option 1: Try to use firstTileId as part of a PAIR (if we don't have a pair yet)
-        if (!hasPair && currentHandMap[firstTileId] >= 2) {
-            const nextHandMap = { ...currentHandMap };
-            nextHandMap[firstTileId] -= 2;
-            currentMinShantenForBranch = Math.min(currentMinShantenForBranch, 
-                findShantenRecursive(nextHandMap, tilesLeft - 2, melds, true)
-            );
-        }
+            // We have 1 pair fixed. We need 4 more blocks (melds or taatsu) from the remaining 11 tiles.
+            // Max 4 blocks from (meldsWithPair + taatsusWithPair) are useful.
+            let effectiveTaatsuBlocksWithPair = Math.min(taatsusWithPair, 4 - meldsWithPair);
+            if (4 - meldsWithPair < 0) effectiveTaatsuBlocksWithPair = 0; // e.g. already have 4+ melds from 11 tiles (kans)
 
-        // Option 2: Try to use firstTileId as part of a KOUTSU (triplet)
-        if (currentHandMap[firstTileId] >= 3) {
-            const nextHandMap = { ...currentHandMap };
-            nextHandMap[firstTileId] -= 3;
-            currentMinShantenForBranch = Math.min(currentMinShantenForBranch,
-                findShantenRecursive(nextHandMap, tilesLeft - 3, melds + 1, hasPair)
-            );
-        }
-
-        // Option 3: Try to use firstTileId as part of a SHUNTSU (sequence)
-        // Check if it's a numbered tile (m, p, s) and not 8 or 9
-        const suit = firstTileId.slice(-1);
-        const num = parseInt(firstTileId.slice(0, -1));
-        if (['m', 'p', 's'].includes(suit) && num <= 7) {
-            const tile2Id = (num + 1) + suit;
-            const tile3Id = (num + 2) + suit;
-            if (currentHandMap[tile2Id] > 0 && currentHandMap[tile3Id] > 0) {
-                const nextHandMap = { ...currentHandMap };
-                nextHandMap[firstTileId]--;
-                nextHandMap[tile2Id]--;
-                nextHandMap[tile3Id]--;
-                currentMinShantenForBranch = Math.min(currentMinShantenForBranch,
-                    findShantenRecursive(nextHandMap, tilesLeft - 3, melds + 1, hasPair)
-                );
-            }
+            let shantenWithThisPair = 8 - (2 * meldsWithPair) - effectiveTaatsuBlocksWithPair - 1; // -1 for the chosen pair
+            minShantenOverall = Math.min(minShantenOverall, shantenWithThisPair);
         }
         
-        // Option 4: Skip this tile (consider it isolated for now, or part of a taatsu later)
-        // This is where taatsu counting would come in, or treating it as an isolated tile.
-        // For this recursive structure, we try to remove the first tile if it can't form a group.
-        const nextHandMapSkip = { ...currentHandMap };
-        nextHandMapSkip[firstTileId]--;
-        // If we skip a tile, it increases shanten by 1 unless it completes a taatsu that wasn't counted.
-        // This recursive formulation is incomplete without proper taatsu handling or a final shanten calc based on remaining tiles.
-        // A standard recursive shanten algorithm is usually more involved, often passing the full sorted hand array.
-        // For example, it tries all possibilities for the current tile:
-        //  - part of pair? recurse.
-        //  - part of koutsu? recurse.
-        //  - part of shuntsu? recurse.
-        //  - part of taatsu? recurse. (more complex as taatsu aren't "removed" in the same way)
-        //  - isolated? recurse, incrementing "isolated tile count".
-        
-        // For the moment, this simplified recursion will likely not yield correct results.
-        // Let's revert to the placeholder for safety until a proven algorithm is implemented.
-        
-        // ** REVERTING TO SAFER PLACEHOLDER for findShantenRecursive **
-        // The above recursive structure is a START but needs to be fully fleshed out with correct base cases
-        // and handling of taatsu / isolated tiles to correctly calculate shanten based on the 8 - 2*M - T - P formula.
-        // A full DFS for shanten is non-trivial.
+        return Math.max(-1, minShantenOverall); // Shanten cannot be less than -1 (win)
     }
-
-    // ** THIS IS THE ACTUAL PLACEHOLDER TO USE UNTIL A FULL ALGORITHM IS READY **
-    // console.warn("calculateShanten_Standard is a STUB and not yet implemented correctly!");
-    // return 8; 
-
-    // Let's try a slightly more advanced placeholder than just '8'.
-    // This is NOT a correct shanten calculation, but an attempt to be better than random.
-    // It counts maximum possible "blocks" (pair or meld-like structures).
-    // This is very heuristic and NOT a proper shanten algorithm.
-    
-    let blocks = 0;
-    let pair_candidate = false;
-    let tempMap = {...handMap};
-    let tilesProcessed = 0;
-
-    // Try to remove pairs greedily (this is not optimal for shanten)
-    for (const tile of TILE_TYPES) {
-        const tileId = tile.id;
-        if (tempMap[tileId] >= 2 && !pair_candidate) {
-            pair_candidate = true;
-            blocks++;
-            tempMap[tileId] -=2;
-            tilesProcessed +=2;
-        }
-    }
-    
-    // Try to remove melds greedily
-    for (let i = 0; i < 2; i++) { // Iterate a couple of times to catch overlapping
-        for (const tile of TILE_TYPES) {
-            const tileId = tile.id;
-            // Try Koutsu
-            if (tempMap[tileId] >= 3) {
-                blocks++;
-                tempMap[tileId] -=3;
-                tilesProcessed +=3;
-                if (blocks >= (pair_candidate ? 5 : 4) ) break; // Enough blocks
-                continue;
-            }
-            // Try Shuntsu
-            const suit = tileId.slice(-1);
-            const num = parseInt(tileId.slice(0, -1));
-            if (['m', 'p', 's'].includes(suit) && num <= 7) {
-                const t2 = (num+1)+suit;
-                const t3 = (num+2)+suit;
-                if (tempMap[tileId] > 0 && tempMap[t2] > 0 && tempMap[t3] > 0) {
-                    blocks++;
-                    tempMap[tileId]--;
-                    tempMap[t2]--;
-                    tempMap[t3]--;
-                    tilesProcessed +=3;
-                    if (blocks >= (pair_candidate ? 5 : 4) ) break;
-                }
-            }
-        }
-        if (blocks >= (pair_candidate ? 5 : 4) ) break;
-    }
-
-    // Rough shanten: 8 - blocks*2 (if pair was found, it's one of the blocks)
-    // This is extremely rough and not a valid shanten.
-    // Let shanten be related to 5 - blocks needed.
-    let shantenEstimate = 8 - (blocks * (blocks > 0 ? 1.5 : 0) ); // Very heuristic
-    // A slightly better heuristic: 8 - 2 * full_melds - pairs - taatsus
-    // The greedy approach above doesn't distinguish melds/taatsus properly.
-
-    // A more structured way is to count groups of 3, 2, and 1.
-    // Let's use a common reference for a basic shanten algorithm.
-    // One of the simplest to understand is "Normal Shanten" from Suzuki T.'s "World-Class Mahjong"
-    // It involves:
-    // 1. Remove head (pair). Maximize melds and taatsu from rest.
-    // 2. No head. Maximize melds and taatsu from hand, one taatsu can be a pair candidate.
-
-    // The code for a full shanten calculator is quite lengthy.
-    // For now, to make it *slightly* better than random but acknowledge it's a placeholder:
-    if (numTilesInHand < 13 && numTilesInHand > 0) return 8 - numTilesInHand; // Very rough
-    if (numTilesInHand === 0) return 8;
-    if (numTilesInHand >= 13) {
-        // Count pairs
-        let pairs = 0;
-        for(const tileId in handMap) {
-            if(handMap[tileId] >= 2) pairs++;
-        }
-        // If many pairs, it's closer to chiitoi, but this is for standard.
-        // A hand full of pairs is bad for standard.
-        // A hand with 0 pairs is also bad (needs a pair).
-        // This heuristic is tricky.
-        // Let's stick to the original simple placeholder for now, as a bad heuristic can be misleading.
-        console.warn("calculateShanten_Standard is a STUB and not yet implemented correctly! Returning high shanten.");
-        return 8; // This means for a 14-tile hand, shanten will be 7 unless chiitoi/kokushi is better.
-    }
-    return Infinity; // Should not be reached
-}
 
     // Helper function to get current "in game" counts for all tiles
 function getInGameTileCounts() {
