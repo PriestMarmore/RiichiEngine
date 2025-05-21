@@ -205,16 +205,9 @@ document.addEventListener('DOMContentLoaded', () => {
             item.classList.add('tile-tracker-item');
             item.dataset.tileId = tile.id;
 
-            // const representation = document.createElement('span'); // OLD
-            // representation.classList.add('tile-representation');   // OLD
-            // representation.textContent = tile.display;             // OLD
-
-            // NEW: Create an image element
-            const representation = document.createElement('img');
-            representation.classList.add('tile-image'); // Add a class for styling
-            representation.src = `tiles/${tile.id}.png`; // Assuming png format
-            representation.alt = tile.name; // Good for accessibility
-            // END NEW
+            const representation = document.createElement('span');
+            representation.classList.add('tile-representation');
+            representation.textContent = tile.display;
 
             // MODIFIED FOR LAYOUT
             const countInfo = document.createElement('div');
@@ -960,6 +953,8 @@ function getInGameTileCounts() {
         
         return minShanten;
     }
+
+
 
     // --- Update getDiscardRecommendation to use shanten ---
     function getDiscardRecommendation() {
