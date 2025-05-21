@@ -348,68 +348,97 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let bestDiscardCandidate = null; // The tile ID of the best tile to discard
         let shantenAfterBestDiscard = Infinity; // The shanten of the hand *after* discarding the best candidate
-        let ukeireForBestDiscard = 0; // Placeholder for ukeire (acceptance) count
+        let ukeireForBestDiscard = -1; // Use -1 to ensure any valid ukeire is better
 
-        // Create a unique list of tiles to try discarding to avoid redundant calculations
-        // E.g., if hand is 1m 1m 2p ..., only try discarding '1m' once.
         const uniqueTilesInHand = [...new Set(myCurrentHand)];
 
         for (const tileToDiscard of uniqueTilesInHand) {
-            const tempHand = [...myCurrentHand];
-            const indexToRemove = tempHand.indexOf(tileToDiscard); // Find first instance to remove
+            const temp13Hand = [...myCurrentHand];
+            const indexToRemove = temp13Hand.indexOf(tileToDiscard);
             if (indexToRemove > -1) {
-                tempHand.splice(indexToRemove, 1); // Create a temporary 13-tile hand
+                temp13Hand.splice(indexToRemove, 1);
             } else {
-                continue; // Should not happen if uniqueTilesInHand comes from myCurrentHand
+                continue;
             }
 
-            const currentShantenOf13TileHand = calculateOverallShanten(tempHand);
+            const currentShantenOf13TileHand = calculateOverallShanten(temp13Hand);
+            let currentUkeireData = { count: 0 }; // Default ukeire if not calculated or shanten is too high
 
-            // TODO: Future Step - Calculate Ukeire for this 13-tile hand
-            // let currentUkeire = calculateUkeire(tempHand, /* pass 'in game' counts */);
+            if (currentShantenOf13TileHand <= 2) { // Only calculate ukeire for hands close to tenpai (e.g., <= 2 shanten)
+                                                // Or adjust this threshold as desired. Ukeire for high shanten is less critical.
+                currentUkeireData = calculateUkeire(temp13Hand);
+            }
+
 
             if (currentShantenOf13TileHand < shantenAfterBestDiscard) {
                 shantenAfterBestDiscard = currentShantenOf13TileHand;
                 bestDiscardCandidate = tileToDiscard;
-                // ukeireForBestDiscard = currentUkeire; // Store ukeire
+                ukeireForBestCandidate = currentUkeireData.count;
             } else if (currentShantenOf13TileHand === shantenAfterBestDiscard) {
-                // TODO: Future Step - If shanten is the same, use ukeire as a tie-breaker
-                // if (currentUkeire > ukeireForBestDiscard) {
-                //     bestDiscardCandidate = tileToDiscard;
-                //     ukeireForBestDiscard = currentUkeire;
-                // }
-                // For now, if shanten is same, we can just keep the first one found or apply simpler tie-break
-                // (e.g. prefer discarding honors over simples if shanten is equal - more complex logic)
+                if (currentUkeireData.count > ukeireForBestCandidate) {
+                    bestDiscardCandidate = tileToDiscard;
+                    ukeireForBestCandidate = currentUkeireData.count;
+                }
+                // TODO: Further tie-breaking (e.g. tile safety, value of tiles being kept)
             }
         }
         
-        // The shanten of the 14-tile hand is effectively the shanten of the best 13-tile hand it can form.
         const effectiveShantenOf14TileHand = shantenAfterBestDiscard;
 
         if (bestDiscardCandidate) {
             const tileObj = TILE_TYPES.find(t => t.id === bestDiscardCandidate);
+            const tileDisplayName = tileObj ? `${tileObj.name} (${tileObj.display})` : bestDiscardCandidate;
+
             let recommendationText = `Shanten: ${effectiveShantenOf14TileHand}. `;
-            recommendationText += `Consider discarding: ${tileObj ? tileObj.name : bestDiscardCandidate} (${bestDiscardCandidate})`;
-            // if (ukeireForBestDiscard > 0) { // When ukeire is implemented
-            //     recommendationText += ` (Ukeire: ${ukeireForBestDiscard})`;
-            // }
+            recommendationText += `Discard: ${tileDisplayName}.`;
+
+            // Only show ukeire if it was calculated and is meaningful (e.g., for low shanten hands)
+            // ukeireForBestCandidate is initialized to -1, so >= 0 means it was calculated.
+            // We might also only want to show it if shanten is low enough to be actively waiting.
+            if (ukeireForBestCandidate >= 0 && effectiveShantenOf14TileHand <= 2) { // Example: Show for 2-shanten or better
+                recommendationText += ` (Ukeire: ${ukeireForBestCandidate})`;
+                // You could also display the specific useful tiles if calculateUkeire returns them
+                // For example, if calculateUkeire returns { count: X, tiles: {'1m': 2, '2p': 4} }
+                // const ukeireDetails = calculateUkeire( resulting 13 tile hand ); // if you need the tiles object
+                // if (ukeireDetails.tiles && Object.keys(ukeireDetails.tiles).length > 0) {
+                //     let usefulTilesStr = Object.entries(ukeireDetails.tiles)
+                //                              .map(([id, count]) => `${TILE_TYPES.find(t=>t.id===id).display}(${count})`)
+                //                              .join(' ');
+                //     recommendationText += ` Waits: ${usefulTilesStr}`;
+                // }
+            }
             discardRecommendationEl.textContent = recommendationText;
+
         } else if (myCurrentHand.length > 0) {
-            // This case should ideally not be reached if myCurrentHand has 14 tiles,
-            // as there will always be at least one candidate.
-            // It might be reached if shanten calculations return Infinity for all options.
+            // This block is reached if the loop finishes and bestDiscardCandidate is still null.
+            // This could happen if:
+            // 1. The hand is already a win (shantenAfterBestDiscard would be -1).
+            // 2. All shanten calculations resulted in Infinity (e.g., errors in shanten functions).
+            // 3. The initial hand was empty or too small for the loop to run (but caught earlier).
+
             if (effectiveShantenOf14TileHand === -1) {
+                // If shanten is -1, it means the hand (after the "best discard", which is the winning tile itself) is complete.
+                // We need to identify which tile was the "winning tile" if it was just drawn.
+                // This logic might need to be more nuanced based on how -1 shanten is determined.
+                // For now, just indicating a completed hand.
                 discardRecommendationEl.textContent = `TSUMO! Hand complete. Shanten: -1.`;
-                // The "bestDiscardCandidate" logic should still pick the tile that was just drawn if it completes the hand.
-                // E.g. if 13 tiles are tenpai, and 14th is winning tile, discard the 14th tile for display.
-                // This part needs careful thought for -1 shanten states.
-                // If shanten is -1, it means the 13-tile hand (after optimal discard) is complete.
-                // The discarded tile is the one that *wasn't* part of the winning 13.
+                // Ideally, the "discard" would be the tile that was just drawn to complete the hand,
+                // but the current loop finds the tile to remove from 14 to *leave* 13 winning tiles.
+                // If the 14th tile was the winning one, `bestDiscardCandidate` should correctly be that tile.
+            } else if (effectiveShantenOf14TileHand === Infinity) {
+                discardRecommendationEl.textContent = "Error: Could not calculate shanten for any discard.";
             } else {
-                discardRecommendationEl.textContent = `Shanten: ${effectiveShantenOf14TileHand}. Could not determine a unique best discard. (Defaulting or error).`;
+                // This case implies the loop ran but didn't set bestDiscardCandidate,
+                // which means shantenAfterBestDiscard might still be Infinity.
+                // Or, if all options had equal shanten and equal ukeire (and no further tie-breaking).
+                // For a 14-tile hand, there should always be *a* tile to discard.
+                // If this happens, it's likely an edge case in the logic or shanten calcs.
+                discardRecommendationEl.textContent = `Shanten: ${effectiveShantenOf14TileHand}. No single best discard determined (may need more tie-breakers or check logic).`;
             }
         } else {
-            discardRecommendationEl.textContent = "Hand empty."; // Should not happen if length check at start passes
+            // This case (myCurrentHand.length === 0) should have been caught by the initial check
+            // in getDiscardRecommendation.
+            discardRecommendationEl.textContent = "Hand empty.";
         }
     }
 
@@ -626,32 +655,348 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // Placeholder for standard hand shanten
-    function calculateShanten_Standard(handMap, numTilesInHand) {
-        // This is the most complex one. We'll need a robust algorithm.
-        // For now, return a high number so it doesn't get chosen over others unless they are worse.
-        if (numTilesInHand < 13) return Infinity; // Not enough tiles
-        
-        // TODO: Implement actual standard shanten calculation.
-        // This involves finding melds (pon, chi, kan) and pairs (toitsu)
-        // and incomplete groups (taatsu like ryanmen, kanchan, penchan).
-        // A common recursive approach:
-        // 1. Remove all pairs one by one. For each removal:
-        // 2. From remaining tiles, remove all completed melds (chi, pon).
-        // 3. Count remaining proto-melds (taatsu).
-        // 4. Use formula: 8 - 2*MELDS - PROTOMELDS - PAIRS (adjust if pair wasn't fixed)
-        
-        // Super naive placeholder - just counts groups of 3 and pairs
-        let groups = 0;
-        let pairs = 0;
-        let tempHand = {...handMap}; // Make a copy
-
-        // Very rough pair count
-        for (const tileId in tempHand) {
-            if (tempHand[tileId] >= 2) pairs++;
+    // --- Helper: Convert handMap to sorted array for sequence checking ---
+function handMapToSortedArray(handMap) {
+    let arr = [];
+    // Ensure consistent order for TILE_TYPES iteration for deterministic sorting baseline
+    TILE_TYPES.forEach(tileType => {
+        const tileId = tileType.id;
+        if (handMap[tileId]) {
+            for (let i = 0; i < handMap[tileId]; i++) {
+                arr.push(tileId);
+            }
         }
-        // This is not how standard shanten works.
-        // For now, let's just return something that will be high.
-        return 8; // Max shanten is 8 (completely random 13 tiles, no pairs/groups)
+    });
+    // sortMahjongHand(arr); // Already sorted by TILE_TYPES order if populated like this
+    return arr;
+}
+
+
+function calculateShanten_Standard(handMap, numTilesInHand) {
+    if (numTilesInHand === 0) return 8; // 8 away from 4 melds, 1 pair
+    if (numTilesInHand > 14 || numTilesInHand < 0) return Infinity; // Invalid hand size for this basic calc
+
+    let minShanten = 8; // Max shanten for a 13/14 tile hand without groups
+
+    // Recursive function
+    // Parameters:
+    //   hand: current hand frequency map
+    //   melds: number of complete melds found
+    //   pairs: number of pairs found (we only care about 0 or 1 for the main pair for now)
+    //   taatsus: number of incomplete groups found
+    function findShantenRecursive(currentHandMap, tilesLeft, melds, hasPair) {
+        // Base case: No tiles left
+        if (tilesLeft === 0) {
+            // Shanten formula: 8 - 2 * melds - (taatsus_or_pair_if_no_taatsus) - (1 if hasPair else 0)
+            // A common formula for shanten is aiming for (4 melds + 1 pair).
+            // Shanten = (Target complete groups needed) * 2 + (Target pairs needed) - 1 (if no pair)
+            // More simply: 8 - (2 * melds) - (number of pair/taatsu blocks, max 5 - melds)
+            // If hasPair, we need 4 melds. Shanten roughly 2 * (4 - melds).
+            // If noPair, we need 4 melds and 1 pair. Shanten roughly 2 * (4-melds) + 1.
+            
+            // Simplified: how many more melds/pair do we need?
+            // Each meld reduces shanten by 2, each pair/taatsu by 1. Start at 8.
+            let currentShanten = 8 - (2 * melds);
+            if (hasPair) {
+                currentShanten -= 1; // Pair contributes 1 to reducing shanten
+            } else {
+                // If no pair, and we need one, effectively shanten is +1 worse
+                // unless a taatsu can become a pair.
+                // This recursive approach will find taatsus implicitly.
+            }
+            
+            // If we have more than 4 melds with a pair, or 5 melds without a pair, it's unusual.
+            // The recursion should try to form at most 4 melds + 1 pair.
+
+            // For this recursive structure, the "taatsu" count is implicit.
+            // When tilesLeft is 0, we have `melds` and `hasPair`.
+            // If hasPair, target is 4 melds. Shanten = 2 * (4 - melds).
+            // If !hasPair, target is 4 melds + 1 pair. Shanten = 2 * (4 - melds) + 1.
+            // This is for a 13-tile hand.
+            let shantenVal;
+            if (hasPair) {
+                shantenVal = Math.max(0, (4 - melds)) * 2 - 1; // -1 for tenpai (0 melds to make), not +0
+                // e.g. 4 melds, 1 pair -> (4-4)*2 - 1 = -1 (win)
+                // 3 melds, 1 pair -> (4-3)*2 - 1 = 1 shanten
+            } else {
+                shantenVal = Math.max(0, (4 - melds)) * 2 + 1;
+                // e.g. 4 melds, 0 pair -> (4-4)*2 + 1 = 1 shanten (need pair)
+                // 3 melds, 0 pair -> (4-3)*2 + 1 = 3 shanten
+            }
+            //This formula is for a 13 tile hand. The recursion gets it to 0 tiles.
+            //Let's use a standard shanten calculation method for the blocks.
+            //Number of blocks = melds + (hasPair ? 1 : 0)
+            //Shanten = 8 - 2*melds - (hasPair?1:0) - (tilesLeft if they form taatsu)
+            //This recursive structure is tricky. Let's use a common iterative refinement.
+
+            // The shanten for 0 tiles left, given `melds` and `hasPair`:
+            // If we have 4 melds and 1 pair, shanten = -1 (win)
+            // If we have 3 melds and 1 pair, need 1 meld (2 tiles) -> 1 shanten
+            // If we have 4 melds and 0 pair, need 1 pair (1 tile) -> 1 shanten
+            
+            // Max blocks = 5 (4 melds + 1 pair)
+            let blocks = melds + (hasPair ? 1 : 0);
+            if (blocks > 5) blocks = 5; // Cannot have more than 5 effective groups
+            
+            // This is shanten based on completed groups for a 13 tile hand
+            let currentShantenVal = 8 - (2 * melds) - (hasPair ? 1 : 0);
+            // If we don't have a pair, and we have less than 4 melds,
+            // one of the "needed melds" could be a pair.
+            // It's simpler to count taatsus separately.
+
+            // Let's use a different recursive state:
+            // findShantenRecursive(index_in_sorted_hand_array, melds, pairs_or_taatsu_count)
+            // This requires a full hand array to pass around.
+            // For now, this placeholder will remain until a proper algorithm is chosen and implemented.
+            console.warn("Recursive shanten standard is a STUB!");
+            return 8; // Fallback to high shanten
+        }
+
+        // If melds + (hasPair?1:0) >= 5, no more groups needed.
+        // Remaining tiles are "excess". Each excess tile adds 1 to shanten.
+        // This path needs to be more refined. If 4 melds and 1 pair found, tilesLeft must be 0.
+        if (melds + (hasPair ? 1:0) >= (numTilesInHand === 14 ? 5 : (numTilesInHand === 13 ? 5 : Math.ceil(numTilesInHand/2.5) ) ) ) {
+           // A hand of 14 tiles: 4 melds, 1 pair (5 groups), 1 discard tile.
+           // If we target 13 tiles (after discard):
+           // If we have 4 melds and 1 pair (total 5 groups) from 13 tiles, it's a win.
+           // If tilesLeft > 0 here, it means we formed groups too "efficiently" or something is wrong.
+           // This path is effectively shanten = tilesLeft if all groups formed.
+           // This simplified recursion isn't robust enough yet.
+        }
+
+
+        // Find the first tile available in currentHandMap
+        let firstTileId = null;
+        for (const tile of TILE_TYPES) { // Iterate in a defined order
+            if (currentHandMap[tile.id] > 0) {
+                firstTileId = tile.id;
+                break;
+            }
+        }
+
+        if (!firstTileId) { // Should be caught by tilesLeft === 0
+            return 8;
+        }
+
+        let currentMinShantenForBranch = 8; // Max shanten for this recursive path
+
+        // Option 1: Try to use firstTileId as part of a PAIR (if we don't have a pair yet)
+        if (!hasPair && currentHandMap[firstTileId] >= 2) {
+            const nextHandMap = { ...currentHandMap };
+            nextHandMap[firstTileId] -= 2;
+            currentMinShantenForBranch = Math.min(currentMinShantenForBranch, 
+                findShantenRecursive(nextHandMap, tilesLeft - 2, melds, true)
+            );
+        }
+
+        // Option 2: Try to use firstTileId as part of a KOUTSU (triplet)
+        if (currentHandMap[firstTileId] >= 3) {
+            const nextHandMap = { ...currentHandMap };
+            nextHandMap[firstTileId] -= 3;
+            currentMinShantenForBranch = Math.min(currentMinShantenForBranch,
+                findShantenRecursive(nextHandMap, tilesLeft - 3, melds + 1, hasPair)
+            );
+        }
+
+        // Option 3: Try to use firstTileId as part of a SHUNTSU (sequence)
+        // Check if it's a numbered tile (m, p, s) and not 8 or 9
+        const suit = firstTileId.slice(-1);
+        const num = parseInt(firstTileId.slice(0, -1));
+        if (['m', 'p', 's'].includes(suit) && num <= 7) {
+            const tile2Id = (num + 1) + suit;
+            const tile3Id = (num + 2) + suit;
+            if (currentHandMap[tile2Id] > 0 && currentHandMap[tile3Id] > 0) {
+                const nextHandMap = { ...currentHandMap };
+                nextHandMap[firstTileId]--;
+                nextHandMap[tile2Id]--;
+                nextHandMap[tile3Id]--;
+                currentMinShantenForBranch = Math.min(currentMinShantenForBranch,
+                    findShantenRecursive(nextHandMap, tilesLeft - 3, melds + 1, hasPair)
+                );
+            }
+        }
+        
+        // Option 4: Skip this tile (consider it isolated for now, or part of a taatsu later)
+        // This is where taatsu counting would come in, or treating it as an isolated tile.
+        // For this recursive structure, we try to remove the first tile if it can't form a group.
+        const nextHandMapSkip = { ...currentHandMap };
+        nextHandMapSkip[firstTileId]--;
+        // If we skip a tile, it increases shanten by 1 unless it completes a taatsu that wasn't counted.
+        // This recursive formulation is incomplete without proper taatsu handling or a final shanten calc based on remaining tiles.
+        // A standard recursive shanten algorithm is usually more involved, often passing the full sorted hand array.
+        // For example, it tries all possibilities for the current tile:
+        //  - part of pair? recurse.
+        //  - part of koutsu? recurse.
+        //  - part of shuntsu? recurse.
+        //  - part of taatsu? recurse. (more complex as taatsu aren't "removed" in the same way)
+        //  - isolated? recurse, incrementing "isolated tile count".
+        
+        // For the moment, this simplified recursion will likely not yield correct results.
+        // Let's revert to the placeholder for safety until a proven algorithm is implemented.
+        
+        // ** REVERTING TO SAFER PLACEHOLDER for findShantenRecursive **
+        // The above recursive structure is a START but needs to be fully fleshed out with correct base cases
+        // and handling of taatsu / isolated tiles to correctly calculate shanten based on the 8 - 2*M - T - P formula.
+        // A full DFS for shanten is non-trivial.
+    }
+
+    // ** THIS IS THE ACTUAL PLACEHOLDER TO USE UNTIL A FULL ALGORITHM IS READY **
+    // console.warn("calculateShanten_Standard is a STUB and not yet implemented correctly!");
+    // return 8; 
+
+    // Let's try a slightly more advanced placeholder than just '8'.
+    // This is NOT a correct shanten calculation, but an attempt to be better than random.
+    // It counts maximum possible "blocks" (pair or meld-like structures).
+    // This is very heuristic and NOT a proper shanten algorithm.
+    
+    let blocks = 0;
+    let pair_candidate = false;
+    let tempMap = {...handMap};
+    let tilesProcessed = 0;
+
+    // Try to remove pairs greedily (this is not optimal for shanten)
+    for (const tile of TILE_TYPES) {
+        const tileId = tile.id;
+        if (tempMap[tileId] >= 2 && !pair_candidate) {
+            pair_candidate = true;
+            blocks++;
+            tempMap[tileId] -=2;
+            tilesProcessed +=2;
+        }
+    }
+    
+    // Try to remove melds greedily
+    for (let i = 0; i < 2; i++) { // Iterate a couple of times to catch overlapping
+        for (const tile of TILE_TYPES) {
+            const tileId = tile.id;
+            // Try Koutsu
+            if (tempMap[tileId] >= 3) {
+                blocks++;
+                tempMap[tileId] -=3;
+                tilesProcessed +=3;
+                if (blocks >= (pair_candidate ? 5 : 4) ) break; // Enough blocks
+                continue;
+            }
+            // Try Shuntsu
+            const suit = tileId.slice(-1);
+            const num = parseInt(tileId.slice(0, -1));
+            if (['m', 'p', 's'].includes(suit) && num <= 7) {
+                const t2 = (num+1)+suit;
+                const t3 = (num+2)+suit;
+                if (tempMap[tileId] > 0 && tempMap[t2] > 0 && tempMap[t3] > 0) {
+                    blocks++;
+                    tempMap[tileId]--;
+                    tempMap[t2]--;
+                    tempMap[t3]--;
+                    tilesProcessed +=3;
+                    if (blocks >= (pair_candidate ? 5 : 4) ) break;
+                }
+            }
+        }
+        if (blocks >= (pair_candidate ? 5 : 4) ) break;
+    }
+
+    // Rough shanten: 8 - blocks*2 (if pair was found, it's one of the blocks)
+    // This is extremely rough and not a valid shanten.
+    // Let shanten be related to 5 - blocks needed.
+    let shantenEstimate = 8 - (blocks * (blocks > 0 ? 1.5 : 0) ); // Very heuristic
+    // A slightly better heuristic: 8 - 2 * full_melds - pairs - taatsus
+    // The greedy approach above doesn't distinguish melds/taatsus properly.
+
+    // A more structured way is to count groups of 3, 2, and 1.
+    // Let's use a common reference for a basic shanten algorithm.
+    // One of the simplest to understand is "Normal Shanten" from Suzuki T.'s "World-Class Mahjong"
+    // It involves:
+    // 1. Remove head (pair). Maximize melds and taatsu from rest.
+    // 2. No head. Maximize melds and taatsu from hand, one taatsu can be a pair candidate.
+
+    // The code for a full shanten calculator is quite lengthy.
+    // For now, to make it *slightly* better than random but acknowledge it's a placeholder:
+    if (numTilesInHand < 13 && numTilesInHand > 0) return 8 - numTilesInHand; // Very rough
+    if (numTilesInHand === 0) return 8;
+    if (numTilesInHand >= 13) {
+        // Count pairs
+        let pairs = 0;
+        for(const tileId in handMap) {
+            if(handMap[tileId] >= 2) pairs++;
+        }
+        // If many pairs, it's closer to chiitoi, but this is for standard.
+        // A hand full of pairs is bad for standard.
+        // A hand with 0 pairs is also bad (needs a pair).
+        // This heuristic is tricky.
+        // Let's stick to the original simple placeholder for now, as a bad heuristic can be misleading.
+        console.warn("calculateShanten_Standard is a STUB and not yet implemented correctly! Returning high shanten.");
+        return 8; // This means for a 14-tile hand, shanten will be 7 unless chiitoi/kokushi is better.
+    }
+    return Infinity; // Should not be reached
+}
+
+    // Helper function to get current "in game" counts for all tiles
+function getInGameTileCounts() {
+    const counts = {};
+    TILE_TYPES.forEach(tile => {
+        const tileId = tile.id;
+        const countInMyHand = myCurrentHand.filter(t => t === tileId).length;
+        const countInMyDiscards = myOwnDiscards[tileId] || 0;
+        const countInOthersDiscards = discardedTileCounts[tileId] || 0;
+        // TODO: Eventually consider visible melds from all players
+
+        const totalKnown = countInMyHand + countInMyDiscards + countInOthersDiscards;
+        counts[tileId] = Math.max(0, 4 - totalKnown);
+    });
+    return counts;
+}
+
+
+    function calculateUkeire(thirteenTileHandArray) {
+        const currentShanten = calculateOverallShanten(thirteenTileHandArray);
+        if (currentShanten < 0) return { count: 0, tiles: {} }; // Already a winning hand, no ukeire needed
+
+        const inGameCounts = getInGameTileCounts(); // Get fresh counts
+        let totalUkeireCount = 0;
+        const usefulTilesDetail = {}; // { 'tileId': countInGame, ... }
+
+        TILE_TYPES.forEach(tileType => {
+            const potentialDrawTileId = tileType.id;
+
+            if (inGameCounts[potentialDrawTileId] === 0) {
+                return; // No such tiles left in game to draw
+            }
+
+            // Check if we already have 4 of this tile in the 13-tile hand (cannot draw a 5th)
+            const countIn13TileHand = thirteenTileHandArray.filter(t => t === potentialDrawTileId).length;
+            if (countIn13TileHand >= 4) {
+                return; // Cannot draw a 5th identical tile to improve standard/chiitoi/kokushi
+            }
+
+            // Create a hypothetical 14-tile hand by adding the potential draw
+            const fourteenTileHypotheticalHand = [...thirteenTileHandArray, potentialDrawTileId];
+            // sortMahjongHand(fourteenTileHypotheticalHand); // Sorting helps if shanten calc relies on it
+
+            // Calculate the shanten of this 14-tile hand.
+            // Our getDiscardRecommendation logic already does this: it finds the best discard from 14
+            // and the shanten of the resulting 13 tiles IS the shanten of the 14-tile hand.
+            let shantenOf14TileHand = Infinity;
+            const uniqueTilesIn14 = [...new Set(fourteenTileHypotheticalHand)];
+
+            for (const tileToDiscardFrom14 of uniqueTilesIn14) {
+                const temp13Hand = [...fourteenTileHypotheticalHand];
+                const indexToRemove = temp13Hand.indexOf(tileToDiscardFrom14);
+                if (indexToRemove > -1) {
+                    temp13Hand.splice(indexToRemove, 1);
+                    shantenOf14TileHand = Math.min(shantenOf14TileHand, calculateOverallShanten(temp13Hand));
+                }
+            }
+            // Now, shantenOf14TileHand is the shanten of the 14-tile hand (i.e., after its optimal discard)
+
+            if (shantenOf14TileHand < currentShanten) {
+                // This potentialDrawTileId is useful!
+                totalUkeireCount += inGameCounts[potentialDrawTileId];
+                usefulTilesDetail[potentialDrawTileId] = (usefulTilesDetail[potentialDrawTileId] || 0) + inGameCounts[potentialDrawTileId];
+            }
+        });
+
+        return { count: totalUkeireCount, tiles: usefulTilesDetail };
     }
 
 
