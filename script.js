@@ -489,12 +489,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 continue;
             }
 
-            const currentShantenOf13TileHand = calculateOverallShanten(temp13Hand);
-            let currentUkeireData = { count: 0 }; // Default ukeire if not calculated or shanten is too high
+            console.log(`--- Testing Discard: ${tileToDiscard} ---`);
+            const currentShantenOf13TileHand = calculateOverallShanten(temp13Hand); // This calls your new standard shanten
+            console.log(`Hand after discard (${temp13Hand.length} tiles): ${temp13Hand.join(' ')}`);
+            console.log(`>>> Calculated Shanten for this 13-tile hand: ${currentShantenOf13TileHand}`);
+
+            let currentUkeireData = { count: 0, tiles: {} };
 
             if (currentShantenOf13TileHand <= 2) { // Only calculate ukeire for hands close to tenpai (e.g., <= 2 shanten)
                                                 // Or adjust this threshold as desired. Ukeire for high shanten is less critical.
                 currentUkeireData = calculateUkeire(temp13Hand);
+                console.log(`Ukeire: ${currentUkeireData.count}`);
             }
 
 
@@ -502,10 +507,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 shantenAfterBestDiscard = currentShantenOf13TileHand;
                 bestDiscardCandidate = tileToDiscard;
                 ukeireForBestCandidate = currentUkeireData.count;
+                console.log(`New best: Discard ${tileToDiscard}, Shanten: ${shantenAfterBestDiscard}, Ukeire: ${ukeireForBestCandidate}`);
             } else if (currentShantenOf13TileHand === shantenAfterBestDiscard) {
                 if (currentUkeireData.count > ukeireForBestCandidate) {
                     bestDiscardCandidate = tileToDiscard;
                     ukeireForBestCandidate = currentUkeireData.count;
+                    console.log(`Ukeire tie-break: Discard ${tileToDiscard}, Shanten: ${shantenAfterBestDiscard}, Ukeire: ${ukeireForBestCandidate}`);
                 }
                 // TODO: Further tie-breaking (e.g. tile safety, value of tiles being kept)
             }
